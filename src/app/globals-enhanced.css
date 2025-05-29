@@ -1,0 +1,454 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* shadcn/ui Variables */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+
+    /* DutyLeak Enhanced Color Variables */
+    --dl-primary: #2563eb;
+    --dl-primary-dark: #1d4ed8;
+    --dl-primary-light: #60a5fa;
+    --dl-secondary: #10b981;
+    --dl-secondary-dark: #059669;
+    --dl-secondary-light: #34d399;
+    --dl-danger: #ef4444;
+    --dl-warning: #f59e0b;
+    --dl-info: #3b82f6;
+    --dl-success: #10b981;
+    --dl-background: #ffffff;
+    --dl-background-alt: #f9fafb;
+    --dl-text: #1f2937;
+    --dl-text-light: #6b7280;
+    --dl-text-lighter: #9ca3af;
+    --dl-border: #e5e7eb;
+    --dl-border-dark: #d1d5db;
+    --dl-shadow: rgba(0, 0, 0, 0.1);
+    
+    /* Typography */
+    --dl-font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    --dl-font-family-mono: 'JetBrains Mono', 'SF Mono', 'Roboto Mono', Menlo, Consolas, Monaco, 'Courier New', monospace;
+    
+    /* Spacing */
+    --dl-spacing-xs: 0.25rem;
+    --dl-spacing-sm: 0.5rem;
+    --dl-spacing-md: 1rem;
+    --dl-spacing-lg: 1.5rem;
+    --dl-spacing-xl: 2rem;
+    --dl-spacing-2xl: 3rem;
+    
+    /* Border Radius */
+    --dl-radius-sm: 0.25rem;
+    --dl-radius-md: 0.375rem;
+    --dl-radius-lg: 0.5rem;
+    --dl-radius-xl: 0.75rem;
+    --dl-radius-full: 9999px;
+    
+    /* Transitions */
+    --dl-transition-fast: 150ms;
+    --dl-transition-normal: 250ms;
+    --dl-transition-slow: 350ms;
+    
+    /* Shadows */
+    --dl-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --dl-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --dl-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --dl-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    /* Dark mode overrides for DutyLeak variables */
+    --dl-background: #1f2937;
+    --dl-background-alt: #374151;
+    --dl-text: #f9fafb;
+    --dl-text-light: #d1d5db;
+    --dl-text-lighter: #9ca3af;
+    --dl-border: #374151;
+    --dl-border-dark: #4b5563;
+  }
+
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--dl-font-family-sans);
+    line-height: 1.5;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 0;
+    margin-bottom: var(--dl-spacing-md);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.5rem; }
+  h3 { font-size: 1.25rem; }
+  h4 { font-size: 1rem; }
+
+  p {
+    margin-top: 0;
+    margin-bottom: var(--dl-spacing-md);
+  }
+
+  a {
+    color: var(--dl-primary);
+    text-decoration: none;
+    transition: color var(--dl-transition-fast) ease-in-out;
+  }
+
+  a:hover {
+    color: var(--dl-primary-dark);
+    text-decoration: underline;
+  }
+}
+
+@layer components {
+  /* DutyLeak Product Card */
+  .dl-product-card {
+    @apply flex flex-col border rounded-lg overflow-hidden bg-card shadow-sm transition-all duration-150;
+  }
+
+  .dl-product-card:hover {
+    @apply -translate-y-1 shadow-md;
+  }
+
+  .dl-product-card-header {
+    @apply p-4 border-b bg-muted/50;
+  }
+
+  .dl-product-card-body {
+    @apply p-4 flex-1;
+  }
+
+  .dl-product-card-footer {
+    @apply p-4 border-t bg-muted/50;
+  }
+
+  .dl-product-title {
+    @apply text-lg font-semibold mb-1;
+  }
+
+  .dl-product-sku {
+    @apply text-sm text-muted-foreground mb-2;
+  }
+
+  .dl-product-meta {
+    @apply flex justify-between mb-2;
+  }
+
+  .dl-product-meta-item {
+    @apply flex flex-col;
+  }
+
+  .dl-product-meta-label {
+    @apply text-xs text-muted-foreground;
+  }
+
+  .dl-product-meta-value {
+    @apply font-semibold;
+  }
+
+  /* Classification Status */
+  .dl-classification-status {
+    @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .dl-classification-status-pending {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+
+  .dl-classification-status-classified {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .dl-classification-status-review {
+    @apply bg-red-100 text-red-800;
+  }
+
+  /* Duty Rate Display */
+  .dl-duty-rate {
+    @apply inline-flex items-center font-semibold;
+  }
+
+  .dl-duty-rate-value {
+    @apply text-xl;
+  }
+
+  .dl-duty-rate-label {
+    @apply text-sm text-muted-foreground ml-1;
+  }
+
+  /* Savings Badge */
+  .dl-savings-badge {
+    @apply inline-flex items-center px-2 py-1 bg-green-50 text-green-700 rounded-full font-semibold;
+  }
+
+  .dl-savings-badge-icon {
+    @apply mr-1;
+  }
+
+  /* Dashboard Stats */
+  .dl-stats-card {
+    @apply p-6 bg-card rounded-lg shadow-sm;
+  }
+
+  .dl-stats-value {
+    @apply text-2xl font-bold mb-1;
+  }
+
+  .dl-stats-label {
+    @apply text-muted-foreground text-sm;
+  }
+
+  .dl-stats-trend {
+    @apply flex items-center mt-2 text-sm;
+  }
+
+  .dl-stats-trend-up {
+    @apply text-green-600;
+  }
+
+  .dl-stats-trend-down {
+    @apply text-red-600;
+  }
+
+  .dl-stats-trend-icon {
+    @apply mr-1;
+  }
+
+  /* Search Bar */
+  .dl-search-bar {
+    @apply relative w-full;
+  }
+
+  .dl-search-input {
+    @apply w-full pl-10 pr-4 py-2 border border-input rounded-full transition-all duration-150 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none;
+  }
+
+  .dl-search-icon {
+    @apply absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground;
+  }
+
+  /* Sidebar */
+  .dl-sidebar {
+    @apply w-64 h-screen fixed top-0 left-0 bg-card border-r overflow-y-auto z-50 transition-transform duration-300;
+  }
+
+  .dl-sidebar-header {
+    @apply p-4 border-b;
+  }
+
+  .dl-sidebar-content {
+    @apply p-4;
+  }
+
+  .dl-sidebar-nav {
+    @apply space-y-1;
+  }
+
+  .dl-sidebar-link {
+    @apply flex items-center px-3 py-2 text-sm rounded-md transition-colors duration-150 hover:bg-accent hover:text-accent-foreground;
+  }
+
+  .dl-sidebar-link.active {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .dl-sidebar-icon {
+    @apply mr-2;
+  }
+
+  /* Main Content */
+  .dl-main-content {
+    @apply ml-64 p-6 min-h-screen;
+  }
+
+  /* Responsive Sidebar */
+  @media (max-width: 768px) {
+    .dl-sidebar {
+      @apply -translate-x-full;
+    }
+    
+    .dl-sidebar.show {
+      @apply translate-x-0;
+    }
+    
+    .dl-main-content {
+      @apply ml-0;
+    }
+  }
+
+  /* Filter Options */
+  .dl-filter-group {
+    @apply mb-4;
+  }
+
+  .dl-filter-label {
+    @apply block mb-1 font-medium;
+  }
+
+  .dl-filter-options {
+    @apply flex flex-wrap gap-1;
+  }
+
+  .dl-filter-option {
+    @apply inline-flex items-center px-2 py-1 border border-input rounded-full text-sm cursor-pointer transition-all duration-150 hover:border-primary;
+  }
+
+  .dl-filter-option.active {
+    @apply bg-primary border-primary text-primary-foreground;
+  }
+
+  /* Animations */
+  .dl-fade-in {
+    animation: fadeIn var(--dl-transition-normal);
+  }
+
+  .dl-slide-in-right {
+    animation: slideInRight var(--dl-transition-normal);
+  }
+
+  .dl-slide-in-left {
+    animation: slideInLeft var(--dl-transition-normal);
+  }
+
+  /* Loader */
+  .dl-loader {
+    @apply inline-block w-8 h-8 border-4 border-border rounded-full border-t-primary animate-spin;
+  }
+
+  .dl-loader-sm {
+    @apply w-4 h-4 border-2;
+  }
+
+  .dl-loader-lg {
+    @apply w-12 h-12 border-8;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* DutyLeak Utility Classes */
+  .dl-container {
+    @apply w-full max-w-6xl mx-auto px-4;
+  }
+
+  .dl-grid {
+    @apply grid grid-cols-12 gap-4;
+  }
+
+  .dl-flex-center {
+    @apply flex items-center justify-center;
+  }
+
+  .dl-text-gradient {
+    @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+  }
+
+  /* Responsive Grid Utilities */
+  .dl-col-span-1 { @apply col-span-1; }
+  .dl-col-span-2 { @apply col-span-2; }
+  .dl-col-span-3 { @apply col-span-3; }
+  .dl-col-span-4 { @apply col-span-4; }
+  .dl-col-span-5 { @apply col-span-5; }
+  .dl-col-span-6 { @apply col-span-6; }
+  .dl-col-span-7 { @apply col-span-7; }
+  .dl-col-span-8 { @apply col-span-8; }
+  .dl-col-span-9 { @apply col-span-9; }
+  .dl-col-span-10 { @apply col-span-10; }
+  .dl-col-span-11 { @apply col-span-11; }
+  .dl-col-span-12 { @apply col-span-12; }
+
+  @media (max-width: 640px) {
+    .dl-sm\:col-span-12 { @apply col-span-12; }
+  }
+
+  @media (max-width: 768px) {
+    .dl-md\:col-span-6 { @apply col-span-6; }
+    .dl-md\:col-span-12 { @apply col-span-12; }
+  }
+
+  @media (max-width: 1024px) {
+    .dl-lg\:col-span-4 { @apply col-span-4; }
+    .dl-lg\:col-span-8 { @apply col-span-8; }
+  }
+}
+
+/* Keyframe Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* Print Styles */
+@media print {
+  .dl-no-print {
+    @apply hidden;
+  }
+  
+  .dl-container {
+    @apply w-full p-0 m-0;
+  }
+  
+  .dl-product-card {
+    @apply shadow-none border border-gray-300;
+  }
+}
