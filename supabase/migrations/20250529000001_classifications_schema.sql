@@ -84,7 +84,9 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Create function to handle setting active classification
 CREATE OR REPLACE FUNCTION set_active_classification()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = ""
+AS $$
 BEGIN
   -- If this is a new classification being set as active
   IF NEW.is_active = true AND (OLD IS NULL OR OLD.is_active = false) THEN

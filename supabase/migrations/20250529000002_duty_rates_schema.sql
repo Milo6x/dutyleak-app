@@ -102,7 +102,9 @@ RETURNS TABLE (
   duty_percentage DECIMAL(10, 4),
   vat_percentage DECIMAL(10, 4),
   source TEXT
-) AS $$
+)
+SET search_path = ""
+AS $$
 BEGIN
   RETURN QUERY
   SELECT dr.duty_percentage, dr.vat_percentage, dr.source

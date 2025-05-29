@@ -82,7 +82,9 @@ CREATE INDEX idx_savings_ledger_new_classification_id ON savings_ledger(new_clas
 
 -- Create function to calculate savings when classification changes
 CREATE OR REPLACE FUNCTION calculate_savings_on_classification_change()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = ""
+AS $$
 DECLARE
   old_duty DECIMAL(10, 4);
   new_duty DECIMAL(10, 4);
@@ -160,7 +162,9 @@ FOR EACH ROW EXECUTE FUNCTION calculate_savings_on_classification_change();
 
 -- Create function to get total savings for a workspace
 CREATE OR REPLACE FUNCTION get_workspace_total_savings(workspace_id UUID)
-RETURNS DECIMAL(12, 2) AS $$
+RETURNS DECIMAL(12, 2)
+SET search_path = ""
+AS $$
 DECLARE
   total_savings DECIMAL(12, 2);
 BEGIN

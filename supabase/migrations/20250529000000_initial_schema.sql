@@ -265,7 +265,9 @@ CREATE POLICY job_related_entities_insert ON job_related_entities
 
 -- Create functions for updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = ""
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
@@ -295,7 +297,9 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Create function to handle new user signup
 CREATE OR REPLACE FUNCTION handle_new_user_signup()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = ""
+AS $$
 BEGIN
   -- Create a profile for the new user
   INSERT INTO profiles (id, full_name)
