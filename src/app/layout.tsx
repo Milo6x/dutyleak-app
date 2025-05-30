@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import './globals-enhanced.css'
+import './globals.css'
 
 export const metadata: Metadata = {
   title: 'DutyLeak - Duty Optimization Platform',

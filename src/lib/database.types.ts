@@ -1,167 +1,122 @@
-export type Json = any
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       classifications: {
         Row: {
-          confidence_score: number
-          created_at: string | null
-          hs6: string
-          hs8: string | null
+          classification_code: string | null
+          created_at: string
+          description: string | null
           id: string
-          is_active: boolean
+          is_active: boolean | null
           product_id: string
-          ruling_reference: string | null
-          source: string
-          updated_at: string | null
+          updated_at: string
+          workspace_id: string
         }
         Insert: {
-          confidence_score: number
-          created_at?: string | null
-          hs6: string
-          hs8?: string | null
+          classification_code?: string | null
+          created_at?: string
+          description?: string | null
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           product_id: string
-          ruling_reference?: string | null
-          source: string
-          updated_at?: string | null
+          updated_at?: string
+          workspace_id: string
         }
         Update: {
-          confidence_score?: number
-          created_at?: string | null
-          hs6?: string
-          hs8?: string | null
+          classification_code?: string | null
+          created_at?: string
+          description?: string | null
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           product_id?: string
-          ruling_reference?: string | null
-          source?: string
-          updated_at?: string | null
+          updated_at?: string
+          workspace_id?: string
         }
-        Relationships: []
-      }
-      duty_calculations: {
-        Row: {
-          classification_id: string
-          created_at: string | null
-          destination_country: string
-          duty_amount: number
-          duty_percentage: number
-          fba_fee_amount: number
-          id: string
-          insurance_cost: number
-          product_id: string
-          product_value: number
-          shipping_cost: number
-          total_landed_cost: number
-          vat_amount: number
-          vat_percentage: number
-        }
-        Insert: {
-          classification_id: string
-          created_at?: string | null
-          destination_country: string
-          duty_amount: number
-          duty_percentage: number
-          fba_fee_amount?: number
-          id?: string
-          insurance_cost?: number
-          product_id: string
-          product_value: number
-          shipping_cost?: number
-          total_landed_cost: number
-          vat_amount: number
-          vat_percentage: number
-        }
-        Update: {
-          classification_id?: string
-          created_at?: string | null
-          destination_country?: string
-          duty_amount?: number
-          duty_percentage?: number
-          fba_fee_amount?: number
-          id?: string
-          insurance_cost?: number
-          product_id?: string
-          product_value?: number
-          shipping_cost?: number
-          total_landed_cost?: number
-          vat_amount?: number
-          vat_percentage?: number
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "classifications_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "classifications_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       duty_rates: {
         Row: {
           classification_id: string
-          country_code: string
-          created_at: string | null
+          created_at: string
           duty_percentage: number
-          effective_date: string
           id: string
-          updated_at: string | null
-          vat_percentage: number
+          updated_at: string
         }
         Insert: {
           classification_id: string
-          country_code: string
-          created_at?: string | null
-          duty_percentage?: number
-          effective_date?: string
+          created_at?: string
+          duty_percentage: number
           id?: string
-          updated_at?: string | null
-          vat_percentage?: number
+          updated_at?: string
         }
         Update: {
           classification_id?: string
-          country_code?: string
-          created_at?: string | null
+          created_at?: string
           duty_percentage?: number
-          effective_date?: string
           id?: string
-          updated_at?: string | null
-          vat_percentage?: number
+          updated_at?: string
         }
-        Relationships: []
-      }
-      duty_scenarios: {
-        Row: {
-          base_product_id: string | null
-          created_at: string | null
-          description: string | null
-          id: string
-          name: string
-          scenario_data: Json
-          updated_at: string | null
-          workspace_id: string
-        }
-        Insert: {
-          base_product_id?: string | null
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          name: string
-          scenario_data?: Json
-          updated_at?: string | null
-          workspace_id: string
-        }
-        Update: {
-          base_product_id?: string | null
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          name?: string
-          scenario_data?: Json
-          updated_at?: string | null
-          workspace_id?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "duty_rates_classification_id_fkey"
+            columns: ["classification_id"]
+            isOneToOne: false
+            referencedRelation: "classifications"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_logs: {
         Row: {
-          created_at: string | null
+          created_at: string
           id: string
           job_id: string
           level: string
@@ -169,7 +124,7 @@ export type Database = {
           metadata: Json
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           id?: string
           job_id: string
           level?: string
@@ -177,43 +132,59 @@ export type Database = {
           metadata?: Json
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           id?: string
           job_id?: string
           level?: string
           message?: string
           metadata?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_logs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_related_entities: {
         Row: {
-          created_at: string | null
+          created_at: string
           entity_id: string
           entity_type: string
           id: string
           job_id: string
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           entity_id: string
           entity_type: string
           id?: string
           job_id: string
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           entity_id?: string
           entity_type?: string
           id?: string
           job_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_related_entities_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       jobs: {
         Row: {
           completed_at: string | null
-          created_at: string | null
+          created_at: string
           error: string | null
           id: string
           parameters: Json
@@ -221,12 +192,12 @@ export type Database = {
           started_at: string | null
           status: string
           type: string
-          updated_at: string | null
+          updated_at: string
           workspace_id: string
         }
         Insert: {
           completed_at?: string | null
-          created_at?: string | null
+          created_at?: string
           error?: string | null
           id?: string
           parameters?: Json
@@ -234,12 +205,12 @@ export type Database = {
           started_at?: string | null
           status?: string
           type: string
-          updated_at?: string | null
+          updated_at?: string
           workspace_id: string
         }
         Update: {
           completed_at?: string | null
-          created_at?: string | null
+          created_at?: string
           error?: string | null
           id?: string
           parameters?: Json
@@ -247,206 +218,226 @@ export type Database = {
           started_at?: string | null
           status?: string
           type?: string
-          updated_at?: string | null
+          updated_at?: string
           workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "jobs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       products: {
         Row: {
           active_classification_id: string | null
           asin: string | null
           cost: number | null
-          created_at: string | null
+          created_at: string
           description: string | null
-          fba_fee_estimate_usd: number | null
           id: string
           image_url: string | null
-          title: string | null
-          updated_at: string | null
+          metadata: Json | null
+          title: string
+          updated_at: string
           workspace_id: string
-          yearly_units: number | null
         }
         Insert: {
           active_classification_id?: string | null
           asin?: string | null
           cost?: number | null
-          created_at?: string | null
+          created_at?: string
           description?: string | null
-          fba_fee_estimate_usd?: number | null
           id?: string
           image_url?: string | null
-          title?: string | null
-          updated_at?: string | null
+          metadata?: Json | null
+          title: string
+          updated_at?: string
           workspace_id: string
-          yearly_units?: number | null
         }
         Update: {
           active_classification_id?: string | null
           asin?: string | null
           cost?: number | null
-          created_at?: string | null
+          created_at?: string
           description?: string | null
-          fba_fee_estimate_usd?: number | null
           id?: string
           image_url?: string | null
-          title?: string | null
-          updated_at?: string | null
+          metadata?: Json | null
+          title?: string
+          updated_at?: string
           workspace_id?: string
-          yearly_units?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_active_classification_id_fkey"
+            columns: ["active_classification_id"]
+            isOneToOne: false
+            referencedRelation: "classifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
           avatar_url: string | null
-          created_at: string | null
+          created_at: string
           full_name: string | null
           id: string
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
           avatar_url?: string | null
-          created_at?: string | null
+          created_at?: string
           full_name?: string | null
           id: string
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
           avatar_url?: string | null
-          created_at?: string | null
+          created_at?: string
           full_name?: string | null
           id?: string
-          updated_at?: string | null
+          updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      review_queue: {
+      savings: {
         Row: {
-          classification_id: string
-          confidence_score: number | null
-          created_at: string | null
+          created_at: string
           id: string
+          new_classification_id: string
+          old_classification_id: string | null
           product_id: string
-          reason: string
-          reviewed_at: string | null
-          reviewer_id: string | null
-          status: string
-          updated_at: string | null
+          updated_at: string
           workspace_id: string
+          yearly_saving: number
         }
         Insert: {
-          classification_id: string
-          confidence_score?: number | null
-          created_at?: string | null
+          created_at?: string
           id?: string
+          new_classification_id: string
+          old_classification_id?: string | null
           product_id: string
-          reason: string
-          reviewed_at?: string | null
-          reviewer_id?: string | null
-          status?: string
-          updated_at?: string | null
+          updated_at?: string
           workspace_id: string
+          yearly_saving: number
         }
         Update: {
-          classification_id?: string
-          confidence_score?: number | null
-          created_at?: string | null
+          created_at?: string
           id?: string
+          new_classification_id?: string
+          old_classification_id?: string | null
           product_id?: string
-          reason?: string
-          reviewed_at?: string | null
-          reviewer_id?: string | null
-          status?: string
-          updated_at?: string | null
+          updated_at?: string
           workspace_id?: string
+          yearly_saving?: number
         }
-        Relationships: []
-      }
-      savings_ledger: {
-        Row: {
-          baseline_duty_rate: number
-          calculation_id: string
-          created_at: string | null
-          id: string
-          optimized_duty_rate: number
-          product_id: string
-          savings_amount: number
-          savings_percentage: number
-          workspace_id: string
-        }
-        Insert: {
-          baseline_duty_rate: number
-          calculation_id: string
-          created_at?: string | null
-          id?: string
-          optimized_duty_rate: number
-          product_id: string
-          savings_amount: number
-          savings_percentage: number
-          workspace_id: string
-        }
-        Update: {
-          baseline_duty_rate?: number
-          calculation_id?: string
-          created_at?: string | null
-          id?: string
-          optimized_duty_rate?: number
-          product_id?: string
-          savings_amount?: number
-          savings_percentage?: number
-          workspace_id?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "savings_new_classification_id_fkey"
+            columns: ["new_classification_id"]
+            isOneToOne: false
+            referencedRelation: "classifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "savings_old_classification_id_fkey"
+            columns: ["old_classification_id"]
+            isOneToOne: false
+            referencedRelation: "classifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "savings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "savings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workspace_users: {
         Row: {
-          created_at: string | null
+          created_at: string
           role: string
-          updated_at: string | null
+          updated_at: string
           user_id: string
           workspace_id: string
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           role?: string
-          updated_at?: string | null
+          updated_at?: string
           user_id: string
           workspace_id: string
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           role?: string
-          updated_at?: string | null
+          updated_at?: string
           user_id?: string
           workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "workspace_users_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workspaces: {
         Row: {
-          created_at: string | null
+          created_at: string
           id: string
           name: string
           plan: string
           stripe_customer_id: string | null
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           id?: string
           name: string
           plan?: string
           stripe_customer_id?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           id?: string
           name?: string
           plan?: string
           stripe_customer_id?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -466,29 +457,27 @@ export type Database = {
   }
 }
 
-type DefaultSchema = Database[Extract<keyof Database, "public">]
+type PublicSchema = Database[keyof Database]
 
 export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+  PublicTableNameOrOptions extends
+    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+        Database[PublicTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
+        PublicSchema["Views"])
+    ? (PublicSchema["Tables"] &
+        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -496,22 +485,20 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -519,22 +506,20 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -542,23 +527,21 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
+  PublicEnumNameOrOptions extends
+    | keyof PublicSchema["Enums"]
     | { schema: keyof Database },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+> = PublicEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
+    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
+    | keyof PublicSchema["CompositeTypes"]
     | { schema: keyof Database },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof Database
@@ -567,8 +550,8 @@ export type CompositeTypes<
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
   ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
+    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {

@@ -25,7 +25,16 @@ type SignupFormData = z.infer<typeof signupSchema>
 export default function SignupForm() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const supabase = createBrowserClient()
+  
+  let supabase
+  try {
+    supabase = createBrowserClient()
+    console.log('Supabase client created successfully')
+  } catch (error) {
+    console.error('Failed to create Supabase client:', error)
+    toast.error('Configuration error. Please contact support.')
+    return <div>Configuration error</div>
+  }
 
   const {
     register,
@@ -35,9 +44,15 @@ export default function SignupForm() {
     resolver: zodResolver(signupSchema),
   })
 
+  const onError = (errors: any) => {
+    console.log('Form validation errors:', errors)
+  }
+
   const onSubmit = async (data: SignupFormData) => {
+    console.log('Form submission started with data:', { email: data.email, fullName: data.fullName, workspaceName: data.workspaceName })
     setIsLoading(true)
     try {
+      console.log('Attempting to sign up user...')
       // Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -52,11 +67,17 @@ export default function SignupForm() {
       })
 
       if (authError) {
+        console.error('Auth error:', authError)
         toast.error(authError.message)
         return
       }
 
+      console.log('Auth data received:', authData)
+
       if (authData.user && !authData.session) {
+        console.log('User created, email verification required')
+        // Store email for potential resend verification
+        localStorage.setItem('pendingVerificationEmail', data.email)
         toast.success('Please check your email to confirm your account!')
         router.push('/auth/verify-email')
         return
@@ -64,66 +85,73 @@ export default function SignupForm() {
 
       // If user is immediately signed in, create workspace
       if (authData.user && authData.session) {
-        await createWorkspaceAndProfile(authData.user.id, data.fullName, data.workspaceName)
-        toast.success('Account created successfully!')
-        router.push('/dashboard')
-        router.refresh()
+        console.log('User immediately signed in, creating workspace...')
+        try {
+          await createWorkspaceAndProfile(authData.user.id, data.fullName, data.workspaceName)
+          toast.success('Account created successfully!')
+          router.push('/dashboard')
+          router.refresh()
+        } catch (error) {
+          console.error('Error creating workspace and profile:', error)
+          toast.error('Account created but there was an issue setting up your workspace. Please contact support.')
+          router.push('/dashboard')
+        }
       }
     } catch (error) {
+      console.error('Unexpected error in form submission:', error)
       toast.error('An unexpected error occurred')
     } finally {
+      console.log('Form submission completed, setting loading to false')
       setIsLoading(false)
     }
   }
 
   const createWorkspaceAndProfile = async (userId: string, fullName: string, workspaceName: string) => {
-    try {
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: userId,
-          full_name: fullName,
-        })
+    // Create profile
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: userId,
+        full_name: fullName,
+      })
 
-      if (profileError) {
-        console.error('Profile creation error:', profileError)
-      }
+    if (profileError) {
+      console.error('Profile creation error:', profileError)
+      throw new Error(`Failed to create profile: ${profileError.message}`)
+    }
 
-      // Create workspace
-      const { data: workspace, error: workspaceError } = await supabase
-        .from('workspaces')
-        .insert({
-          name: workspaceName,
-          plan: 'free',
-        })
-        .select()
-        .single()
+    // Create workspace
+    const { data: workspace, error: workspaceError } = await supabase
+      .from('workspaces')
+      .insert({
+        name: workspaceName,
+        plan: 'free',
+      })
+      .select()
+      .single()
 
-      if (workspaceError) {
-        console.error('Workspace creation error:', workspaceError)
-        return
-      }
+    if (workspaceError) {
+      console.error('Workspace creation error:', workspaceError)
+      throw new Error(`Failed to create workspace: ${workspaceError.message}`)
+    }
 
-      // Add user to workspace
-      const { error: workspaceUserError } = await supabase
-        .from('workspace_users')
-        .insert({
-          user_id: userId,
-          workspace_id: workspace.id,
-          role: 'owner',
-        })
+    // Add user to workspace
+    const { error: workspaceUserError } = await supabase
+      .from('workspace_users')
+      .insert({
+        user_id: userId,
+        workspace_id: workspace.id,
+        role: 'owner',
+      })
 
-      if (workspaceUserError) {
-        console.error('Workspace user creation error:', workspaceUserError)
-      }
-    } catch (error) {
-      console.error('Setup error:', error)
+    if (workspaceUserError) {
+      console.error('Workspace user creation error:', workspaceUserError)
+      throw new Error(`Failed to add user to workspace: ${workspaceUserError.message}`)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6">
       <div>
         <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
           Full Name
@@ -211,6 +239,7 @@ export default function SignupForm() {
       <button
         type="submit"
         disabled={isLoading}
+        onClick={() => console.log('Create Account button clicked')}
         className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isLoading ? 'Creating Account...' : 'Create Account'}
