@@ -147,27 +147,61 @@ export class FbaFeeCalculator {
   private calculateFulfillmentFee(tier: 'standard' | 'oversize' | 'special', weight: number, category?: string): number {
     // Base rates (simplified for example)
     if (tier === 'standard') {
-      if (weight <= 1) return 3.22;
-      if (weight <= 2) return 3.40;
-      if (weight <= 3) return 3.58;
-      if (weight <= 4) return 3.76;
-      if (weight <= 5) return 3.94;
-      if (weight <= 6) return 4.12;
-      if (weight <= 7) return 4.30;
-      if (weight <= 8) return 4.48;
-      if (weight <= 9) return 4.66;
-      if (weight <= 10) return 4.84;
-      if (weight <= 15) return 5.02;
-      if (weight <= 20) return 5.20;
+      if (weight <= 1) {
+        return 3.22;
+      }
+      if (weight <= 2) {
+        return 3.40;
+      }
+      if (weight <= 3) {
+        return 3.58;
+      }
+      if (weight <= 4) {
+        return 3.76;
+      }
+      if (weight <= 5) {
+        return 3.94;
+      }
+      if (weight <= 6) {
+        return 4.12;
+      }
+      if (weight <= 7) {
+        return 4.30;
+      }
+      if (weight <= 8) {
+        return 4.48;
+      }
+      if (weight <= 9) {
+        return 4.66;
+      }
+      if (weight <= 10) {
+        return 4.84;
+      }
+      if (weight <= 15) {
+        return 5.02;
+      }
+      if (weight <= 20) {
+        return 5.20;
+      }
       return 5.38; // Over 20 lbs
     }
     
     if (tier === 'oversize') {
-      if (weight <= 5) return 8.26;
-      if (weight <= 10) return 9.79;
-      if (weight <= 20) return 13.05;
-      if (weight <= 40) return 17.39;
-      if (weight <= 70) return 26.57;
+      if (weight <= 5) {
+        return 8.26;
+      }
+      if (weight <= 10) {
+        return 9.79;
+      }
+      if (weight <= 20) {
+        return 13.05;
+      }
+      if (weight <= 40) {
+        return 17.39;
+      }
+      if (weight <= 70) {
+        return 26.57;
+      }
       return 26.57; // Over 70 lbs
     }
     
@@ -198,7 +232,9 @@ export class FbaFeeCalculator {
    */
   private calculateOtherFees(category?: string): number {
     // Simplified example - in reality, this would include referral fees, etc.
-    if (!category) return 0;
+    if (!category) {
+      return 0;
+    }
     
     switch (category.toLowerCase()) {
       case 'electronics':

@@ -339,7 +339,7 @@ export default function SecurityPage() {
             Active Sessions
           </CardTitle>
           <CardDescription>
-            Manage devices and locations where you're currently logged in
+            Manage devices and locations where you&apos;re currently logged in
           </CardDescription>
         </CardHeader>
         <CardContent>

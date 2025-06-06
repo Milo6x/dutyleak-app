@@ -106,7 +106,7 @@ export default function VerifyEmailForm() {
       </h3>
       
       <p className="text-gray-600 mb-6">
-        We've sent a verification link to your email address. 
+        We&apos;ve sent a verification link to your email address. 
         Click the link in the email to verify your account and complete the signup process.
       </p>
 
@@ -127,7 +127,7 @@ export default function VerifyEmailForm() {
         </button>
 
         <div className="text-sm text-gray-600">
-          <span>Didn't receive the email? Check your spam folder or </span>
+          <span>Didn&apos;t receive the email? Check your spam folder or </span>
           <Link
             href="/auth/signup"
             className="text-blue-600 hover:text-blue-500 font-medium transition-colors"

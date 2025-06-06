@@ -55,7 +55,7 @@ export default function ScenariosPage() {
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) { throw error }
       setScenarios(data || [])
     } catch (error) {
       console.error('Error fetching scenarios:', error)
@@ -67,7 +67,7 @@ export default function ScenariosPage() {
   const createScenario = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) { return }
 
       const { data: workspaceUser } = await supabase
         .from('workspace_users')
@@ -75,7 +75,7 @@ export default function ScenariosPage() {
         .eq('user_id', user.id)
         .single()
 
-      if (!workspaceUser) return
+      if (!workspaceUser) { return }
 
       const scenarioData = {
         name: newScenario.name,
@@ -95,7 +95,7 @@ export default function ScenariosPage() {
         .from('duty_scenarios')
         .insert([scenarioData])
 
-      if (error) throw error
+      if (error) { throw error }
 
       setShowCreateModal(false)
       setNewScenario({
@@ -123,7 +123,7 @@ export default function ScenariosPage() {
         body: JSON.stringify({ scenario_id: scenarioId })
       })
 
-      if (!response.ok) throw new Error('Failed to run scenario')
+      if (!response.ok) { throw new Error('Failed to run scenario') }
 
       fetchScenarios()
     } catch (error) {
@@ -132,7 +132,7 @@ export default function ScenariosPage() {
   }
 
   const deleteScenario = async (scenarioId: string) => {
-    if (!confirm('Are you sure you want to delete this scenario?')) return
+    if (!confirm('Are you sure you want to delete this scenario?')) { return }
 
     try {
       const { error } = await supabase
@@ -140,7 +140,7 @@ export default function ScenariosPage() {
         .delete()
         .eq('id', scenarioId)
 
-      if (error) throw error
+      if (error) { throw error }
       fetchScenarios()
     } catch (error) {
       console.error('Error deleting scenario:', error)

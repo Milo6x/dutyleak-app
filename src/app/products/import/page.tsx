@@ -346,9 +346,9 @@ export default function ImportProductsPage() {
           <div className="bg-white border rounded-md p-4 text-sm font-mono overflow-x-auto">
             <div className="text-gray-600">
               title,asin,cost,weight,category,subcategory,dimensions_length,dimensions_width,dimensions_height<br/>
-              "Wireless Headphones","B08XYZ123",29.99,0.5,"Electronics","Audio",8,6,3<br/>
-              "Coffee Mug","B09ABC456",12.50,0.8,"Home & Kitchen","Drinkware",4,4,4<br/>
-              "Notebook","B07DEF789",5.99,0.3,"Office Products","Paper",11,8.5,0.5
+              &quot;Wireless Headphones&quot;,&quot;B08XYZ123&quot;,29.99,0.5,&quot;Electronics&quot;,&quot;Audio&quot;,8,6,3<br/>
+              &quot;Coffee Mug&quot;,&quot;B09ABC456&quot;,12.50,0.8,&quot;Home & Kitchen&quot;,&quot;Drinkware&quot;,4,4,4<br/>
+              &quot;Notebook&quot;,&quot;B07DEF789&quot;,5.99,0.3,&quot;Office Products&quot;,&quot;Paper&quot;,11,8.5,0.5
             </div>
           </div>
           <p className="text-sm text-gray-500 mt-2">

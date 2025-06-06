@@ -72,7 +72,7 @@ export default function ReviewQueuePage() {
             <Alert>
               <BoltIcon className="h-4 w-4" />
               <AlertDescription>
-                You're using the enhanced review workflow with improved flagging criteria, 
+                You&apos;re using the enhanced review workflow with improved flagging criteria, 
                 inline editing, and better user experience.
               </AlertDescription>
             </Alert>

@@ -711,7 +711,7 @@ export default function MultiCountryRulesManager() {
                   </div>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
-                    Enter calculation parameters and click "Calculate Duty" to see results
+                    Enter calculation parameters and click &quot;Calculate Duty&quot; to see results
                   </div>
                 )}
               </CardContent>

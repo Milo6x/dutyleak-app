@@ -383,9 +383,9 @@ export function FBAFeeHistory({
                 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <div className="flex items-center gap-4">
-                    <span>L: {entry.dimensions.length}"</span>
-                    <span>W: {entry.dimensions.width}"</span>
-                    <span>H: {entry.dimensions.height}"</span>
+                    <span>L: {entry.dimensions.length}&quot;</span>
+                    <span>W: {entry.dimensions.width}&quot;</span>
+                    <span>H: {entry.dimensions.height}&quot;</span>
                     <span>Weight: {entry.dimensions.weight} lbs</span>
                   </div>
                   {entry.productPrice && (

@@ -565,7 +565,7 @@ export function ScenarioModeler({
             {results.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No results yet. Configure scenarios and click "Calculate All" to see results.</p>
+                <p>No results yet. Configure scenarios and click &quot;Calculate All&quot; to see results.</p>
               </div>
             ) : (
               <div className="space-y-4">

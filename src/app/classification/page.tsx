@@ -200,9 +200,9 @@ export default function ClassificationPage() {
                   <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                     <h4 className="font-semibold text-green-800 mb-2">✓ Good Example</h4>
                     <p className="text-sm text-green-700 mb-2">
-                      "Men's cotton t-shirts, 100% cotton knit fabric, short sleeve, crew neck, 
+                      &quot;Men&apos;s cotton t-shirts, 100% cotton knit fabric, short sleeve, crew neck, 
                       sizes S-XL, for casual wear, plain colors (white, black, navy), 
-                      weight approximately 180gsm"
+                      weight approximately 180gsm&quot;
                     </p>
                     <Badge className="bg-green-100 text-green-800">Likely HS Code: 6109.10</Badge>
                   </div>
@@ -210,7 +210,7 @@ export default function ClassificationPage() {
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                     <h4 className="font-semibold text-red-800 mb-2">✗ Poor Example</h4>
                     <p className="text-sm text-red-700 mb-2">
-                      "Shirts for men"
+                      &quot;Shirts for men&quot;
                     </p>
                     <p className="text-xs text-red-600">
                       Too vague - missing material, style, and construction details
