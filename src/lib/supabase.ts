@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, createBrowserClient as createSSRBrowserClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { type Database } from './database.types';
 
@@ -12,7 +12,7 @@ export const createBrowserClient = () => {
     throw new Error('Missing Supabase environment variables');
   }
 
-  return createClient<Database>(supabaseUrl, supabaseAnonKey);
+  return createSSRBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
 };
 
 // Create a Supabase client for use in server components and API routes

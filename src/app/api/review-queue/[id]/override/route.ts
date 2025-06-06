@@ -1,5 +1,4 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
@@ -7,8 +6,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
     // Check authentication
     const { data: { session } } = await supabase.auth.getSession();
@@ -25,12 +23,24 @@ export async function POST(
     const body = await req.json();
     const { 
       newHsCode,
-      justification
+      justification,
+      reasonCategory,
+      reasonSubcategory,
+      productCategory,
+      requiresApproval = false,
+      metadata = {}
     } = body;
 
-    if (!newHsCode) {
+    if (!newHsCode || !justification) {
       return NextResponse.json(
-        { error: 'Missing required field: newHsCode' },
+        { error: 'New HS code and justification are required' },
+        { status: 400 }
+      );
+    }
+
+    if (!reasonCategory || !reasonSubcategory) {
+      return NextResponse.json(
+        { error: 'Override reason category and subcategory are required' },
         { status: 400 }
       );
     }
@@ -64,22 +74,44 @@ export async function POST(
       );
     }
 
-    // Determine HS6 and HS8
-    const hs6 = newHsCode.substring(0, 6);
-    const hs8 = newHsCode.length >= 8 ? newHsCode : null;
-    
-    // Create a new classification with the override
+    // Get user profile for enhanced metadata
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', session.user.id)
+      .single();
+
+    // Prepare enhanced classification data
+    const classificationData = {
+      product_id: reviewItem.product_id,
+      hs6: newHsCode.substring(0, 6),
+      hs8: newHsCode.length >= 8 ? newHsCode.substring(0, 8) : null,
+      hs10: newHsCode.length >= 10 ? newHsCode : null,
+      confidence_score: 1.0, // Manual override has 100% confidence
+      source: 'manual_override',
+      workspace_id: workspaceUser.workspace_id,
+      created_by: session.user.id,
+      metadata: {
+        ...metadata,
+        override_reason: {
+          category: reasonCategory,
+          subcategory: reasonSubcategory,
+          justification
+        },
+        product_category: productCategory,
+        requires_approval: requiresApproval,
+        override_timestamp: new Date().toISOString(),
+        overridden_by: {
+          user_id: session.user.id,
+          user_name: profile?.full_name || session.user.email
+        }
+      }
+    }
+
+    // Create new classification with override
     const { data: newClassification, error: classError } = await supabase
       .from('classifications')
-      .insert({
-        product_id: reviewItem.product_id,
-        hs6,
-        hs8,
-        confidence_score: 1.0, // Manual override has 100% confidence
-        source: 'manual_override',
-        ruling_reference: justification || 'Manual override',
-        is_active: true
-      })
+      .insert(classificationData)
       .select()
       .single();
 
@@ -90,14 +122,26 @@ export async function POST(
       );
     }
 
-    // Update review queue item
+    // Update review queue item status with enhanced information
+    const reviewQueueUpdate = {
+      status: requiresApproval ? 'pending_approval' : 'overridden',
+      reviewer_id: session.user.id,
+      reviewed_at: new Date().toISOString(),
+      metadata: {
+        override_info: {
+          reason_category: reasonCategory,
+          reason_subcategory: reasonSubcategory,
+          requires_approval: requiresApproval,
+          overridden_by: session.user.id,
+          override_timestamp: new Date().toISOString(),
+          new_classification_id: newClassification.id
+        }
+      }
+    }
+
     const { error: updateError } = await supabase
       .from('review_queue')
-      .update({
-        status: 'overridden',
-        reviewer_id: session.user.id,
-        reviewed_at: new Date().toISOString()
-      })
+      .update(reviewQueueUpdate)
       .eq('id', id);
 
     if (updateError) {
@@ -117,6 +161,43 @@ export async function POST(
       console.error('Failed to update product:', productError);
       // Continue anyway to return success
     }
+
+    // Enhanced audit logging
+    await supabase
+      .from('audit_logs')
+      .insert({
+        workspace_id: workspaceUser.workspace_id,
+        user_id: session.user.id,
+        action: requiresApproval ? 'classification_override_pending' : 'classification_override',
+        resource_type: 'review_queue',
+        resource_id: id,
+        details: {
+          product_id: reviewItem.product_id,
+          old_classification: {
+            classification_id: reviewItem.classification_id,
+            confidence: 'unknown',
+            source: 'unknown'
+          },
+          new_classification: {
+            hs_code: newHsCode,
+            confidence: 1.0,
+            source: 'manual_override'
+          },
+          override_reason: {
+            category: reasonCategory,
+            subcategory: reasonSubcategory,
+            justification
+          },
+          product_category: productCategory,
+          requires_approval: requiresApproval,
+          validation_results: metadata.validationResults,
+          user_info: {
+            user_id: session.user.id,
+            user_name: profile?.full_name || session.user.email,
+            user_email: session.user.email
+          }
+        }
+      });
 
     // Add a log entry
     await supabase
@@ -138,8 +219,21 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: 'Classification overridden successfully',
-      newClassificationId: newClassification.id
+      message: requiresApproval 
+        ? 'Override submitted for approval' 
+        : 'Classification overridden successfully',
+      data: {
+        reviewItemId: params.id,
+        newClassificationId: newClassification.id,
+        newHsCode,
+        status: requiresApproval ? 'pending_approval' : 'overridden',
+        requiresApproval,
+        overrideReason: {
+          category: reasonCategory,
+          subcategory: reasonSubcategory
+        },
+        timestamp: new Date().toISOString()
+      }
     });
     
   } catch (error) {

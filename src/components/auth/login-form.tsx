@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react' // Added useEffect
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase'
 import { useForm } from 'react-hook-form'
@@ -21,8 +21,9 @@ type LoginFormData = z.infer<typeof loginSchema>
 export default function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState<string | null>(null) // Added this line
   const router = useRouter()
-  const supabase = createBrowserClient()
+  const supabase = useMemo(() => createBrowserClient(), [])
 
   const {
     register,
@@ -32,27 +33,37 @@ export default function LoginForm() {
     resolver: zodResolver(loginSchema),
   })
 
-  const onSubmit = async (data: LoginFormData) => {
+  const onSubmit = async (values: LoginFormData) => {
     setLoading(true)
+    setError(null)
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password,
       })
 
-      if (error) {
-        toast.error(error.message)
+      if (signInError) {
+        console.error('Supabase sign-in error:', signInError)
+        toast.error(signInError.message || 'Invalid login credentials')
+        setError(signInError.message || 'Invalid login credentials')
+        setLoading(false)
         return
       }
 
-      toast.success('Successfully signed in!')
-      router.push('/dashboard')
-    } catch (error) {
-      toast.error('An unexpected error occurred')
-    } finally {
-      setLoading(false)
+      if (data?.session) {
+        toast.success('Welcome back!')
+        router.push('/dashboard')
+      } else {
+        toast.error('Login failed - no session created')
+      }
+    } catch (error: any) {
+      console.error('Error in onSubmit:', error)
+      toast.error(error.message || 'An unexpected error occurred.')
+      setError(error.message || 'An unexpected error occurred.')
     }
+    setLoading(false)
   }
+
 
   const handleMagicLink = async () => {
     const email = (document.getElementById('email') as HTMLInputElement)?.value
@@ -66,7 +77,7 @@ export default function LoginForm() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?redirectTo=/dashboard`,
         },
       })
 
@@ -90,7 +101,13 @@ export default function LoginForm() {
         <p className="mt-2 text-gray-600">Enter your email and password to sign in to your account</p>
       </div>
       
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md">
+          <p>{error}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5"> 
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
             Email
@@ -99,6 +116,7 @@ export default function LoginForm() {
             {...register('email')}
             type="email"
             id="email"
+            autoComplete="email"
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-gray-50 focus:bg-white"
             placeholder="name@example.com"
           />
@@ -124,6 +142,7 @@ export default function LoginForm() {
               {...register('password')}
               type={showPassword ? 'text' : 'password'}
               id="password"
+              autoComplete="current-password"
               className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-gray-50 focus:bg-white"
               placeholder="Enter your password"
             />

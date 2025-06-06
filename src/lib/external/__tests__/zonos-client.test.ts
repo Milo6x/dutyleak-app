@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { ZonosClient } from '../zonos-client';
 
 // Mock fetch
-global.fetch = vi.fn();
+global.fetch = jest.fn(() => Promise.resolve(new Response())) as jest.MockedFunction<typeof fetch>;
 
 describe('ZonosClient', () => {
   let client: ZonosClient;
   
   beforeEach(() => {
     // Reset mocks
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     
     // Set environment variable for testing
     process.env.ZONOS_API_KEY = 'test-api-key';

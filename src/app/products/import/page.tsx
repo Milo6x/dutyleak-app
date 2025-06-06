@@ -2,15 +2,24 @@
 
 import { useState, useRef } from 'react'
 import { createBrowserClient } from '@/lib/supabase'
-import DashboardLayout from '@/components/layout/dashboard-layout'
+import toast from 'react-hot-toast'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { 
+  Upload, 
+  FileText, 
+  CheckCircle, 
+  XCircle, 
+  AlertTriangle,
+  Download,
+  ArrowLeft
+} from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import {
-  CloudArrowUpIcon,
-  DocumentTextIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  ArrowLeftIcon,
-} from '@heroicons/react/24/outline'
+import DashboardLayout from '@/components/layout/dashboard-layout'
 
 interface ImportResult {
   success: boolean
@@ -51,7 +60,7 @@ export default function ImportProductsPage() {
 
   const handleFileSelect = (selectedFile: File) => {
     if (selectedFile.type !== 'text/csv' && !selectedFile.name.endsWith('.csv')) {
-      alert('Please select a CSV file')
+      toast.error('Please select a CSV file')
       return
     }
     setFile(selectedFile)
@@ -66,7 +75,7 @@ export default function ImportProductsPage() {
   }
 
   const handleUpload = async () => {
-    if (!file) return
+    if (!file) {return}
 
     setUploading(true)
     setResult(null)
@@ -123,7 +132,7 @@ export default function ImportProductsPage() {
             href="/products"
             className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
           >
-            <ArrowLeftIcon className="h-4 w-4 mr-1" />
+            <ArrowLeft className="h-4 w-4 mr-1" />
             Back to Products
           </Link>
         </div>
@@ -187,7 +196,7 @@ export default function ImportProductsPage() {
                 
                 {file ? (
                   <div className="space-y-2">
-                    <CheckCircleIcon className="mx-auto h-12 w-12 text-green-400" />
+                    <CheckCircle className="mx-auto h-12 w-12 text-green-400" />
                     <div className="text-sm">
                       <p className="font-medium text-gray-900">{file.name}</p>
                       <p className="text-gray-500">
@@ -197,7 +206,7 @@ export default function ImportProductsPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
                     <div className="text-sm">
                       <label className="font-medium text-blue-600 hover:text-blue-500 cursor-pointer">
                         Choose a CSV file
@@ -248,7 +257,7 @@ export default function ImportProductsPage() {
               <div className="text-center">
                 {result.success ? (
                   <div className="space-y-3">
-                    <CheckCircleIcon className="mx-auto h-16 w-16 text-green-400" />
+                    <CheckCircle className="mx-auto h-16 w-16 text-green-400" />
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">
                         Import Successful!
@@ -280,7 +289,7 @@ export default function ImportProductsPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <ExclamationTriangleIcon className="mx-auto h-16 w-16 text-red-400" />
+                    <AlertTriangle className="mx-auto h-16 w-16 text-red-400" />
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">
                         Import Failed

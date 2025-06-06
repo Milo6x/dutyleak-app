@@ -1,12 +1,13 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { LandedCostCalculator } from '@/lib/duty/landed-cost-calculator';
+import type { LandedCostRequest } from '@/lib/duty/landed-cost-calculator';
 
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
     // Check authentication
     const { data: { session } } = await supabase.auth.getSession();
@@ -157,7 +158,8 @@ export async function POST(req: NextRequest) {
           vat_percentage: newDutyRates.vat_percentage,
           duty_amount: landedCostDetails.dutyAmount,
           vat_amount: landedCostDetails.vatAmount,
-          total_landed_cost: landedCostDetails.totalLandedCost
+          total_landed_cost: landedCostDetails.totalLandedCost,
+          workspace_id: product.workspace_id
         })
         .select()
         .single();
@@ -207,7 +209,8 @@ export async function POST(req: NextRequest) {
         vat_percentage: dutyRates.vat_percentage,
         duty_amount: landedCostDetails.dutyAmount,
         vat_amount: landedCostDetails.vatAmount,
-        total_landed_cost: landedCostDetails.totalLandedCost
+        total_landed_cost: landedCostDetails.totalLandedCost,
+        workspace_id: product.workspace_id
       })
       .select()
       .single();
@@ -225,6 +228,75 @@ export async function POST(req: NextRequest) {
     
   } catch (error) {
     console.error('Landed cost API error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// GET endpoint for calculation history
+export async function GET(req: NextRequest) {
+  try {
+    const cookieStore = cookies();
+    const supabase = createDutyLeakServerClient();
+    
+    // Check authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    const productId = searchParams.get('productId');
+    const limit = parseInt(searchParams.get('limit') || '10');
+
+    let query = supabase
+      .from('duty_calculations')
+      .select(`
+        id,
+        product_id,
+        classification_id,
+        destination_country,
+        product_value,
+        shipping_cost,
+        insurance_cost,
+        fba_fee_amount,
+        duty_percentage,
+        vat_percentage,
+        duty_amount,
+        vat_amount,
+        total_landed_cost,
+        created_at,
+        products!inner(name, sku)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (productId) {
+      query = query.eq('product_id', productId);
+    }
+
+    const { data: calculations, error } = await query;
+
+    if (error) {
+      console.error('Failed to fetch calculation history:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch calculation history' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      calculations
+    });
+
+  } catch (error) {
+    console.error('Calculation history API error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

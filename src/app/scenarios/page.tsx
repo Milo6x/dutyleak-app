@@ -1,33 +1,32 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Plus, Play, Trash2, FileText, Clock, CheckCircle, AlertCircle, Calculator, ArrowRight, Bolt as BoltIcon, BarChart3 as ChartBarIcon, DollarSign as CurrencyDollarIcon, Copy as DocumentDuplicateIcon } from 'lucide-react'
 import { createBrowserClient } from '@/lib/supabase'
+import { toast } from 'sonner'
 import DashboardLayout from '@/components/layout/dashboard-layout'
-import {
-  PlusIcon,
-  PlayIcon,
-  TrashIcon,
-  DocumentDuplicateIcon,
-  ChartBarIcon,
-  CurrencyDollarIcon,
-} from '@heroicons/react/24/outline'
+import Link from 'next/link'
 
 interface Scenario {
   id: string
   name: string
   description: string
-  status: 'draft' | 'running' | 'completed' | 'failed'
+  status: string
   created_at: string
   updated_at: string
-  total_products: number
-  potential_savings: number
-  parameters: {
-    origin_country?: string
-    destination_country?: string
-    product_categories?: string[]
-    min_value?: number
-    max_value?: number
-  }
+  total_products: number | null
+  potential_savings: number | null
+  parameters: any
 }
 
 export default function ScenariosPage() {
@@ -70,18 +69,18 @@ export default function ScenariosPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data: profile } = await supabase
-        .from('profiles')
+      const { data: workspaceUser } = await supabase
+        .from('workspace_users')
         .select('workspace_id')
-        .eq('id', user.id)
+        .eq('user_id', user.id)
         .single()
 
-      if (!profile) return
+      if (!workspaceUser) return
 
       const scenarioData = {
         name: newScenario.name,
         description: newScenario.description,
-        workspace_id: profile.workspace_id,
+        workspace_id: workspaceUser.workspace_id,
         status: 'draft' as const,
         parameters: {
           origin_country: newScenario.origin_country,
@@ -174,18 +173,87 @@ export default function ScenariosPage() {
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Duty Scenarios</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Create and manage duty optimization scenarios
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">Scenarios</h1>
+            <p className="text-gray-600">Manage and run duty calculation scenarios</p>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-          >
-            <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-            New Scenario
-          </button>
+          <div className="flex items-center gap-3">
+            <Link href="/scenario-modeler">
+              <Button variant="outline" className="flex items-center gap-2">
+                <BoltIcon className="h-4 w-4" />
+                Enhanced Modeler
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Button
+               onClick={() => setShowCreateModal(true)}
+               className="flex items-center gap-2"
+             >
+               <Plus className="h-4 w-4" />
+               Create Scenario
+             </Button>
+          </div>
+        </div>
+
+        {/* Quick Access Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="border-2 border-dashed border-blue-200 hover:border-blue-400 transition-colors">
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <Calculator className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Enhanced Scenario Modeler</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Advanced modeling with batch analysis, multi-scenario comparison, and comprehensive optimization
+              </p>
+              <Link href="/scenario-modeler">
+                <Button className="w-full">
+                  Launch Enhanced Modeler
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <FileText className="h-6 w-6 text-green-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Quick Scenario</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Create and run a simple scenario for immediate analysis
+              </p>
+              <Button 
+                 onClick={() => setShowCreateModal(true)}
+                 variant="outline" 
+                 className="w-full"
+               >
+                 Create Quick Scenario
+               </Button>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <Play className="h-6 w-6 text-purple-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Saved Scenarios</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Access and manage your previously created scenarios
+              </p>
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => {
+                  toast.success('Loading saved scenarios...')
+                  // TODO: Implement view all scenarios functionality
+                  console.log('View all saved scenarios')
+                }}
+              >
+                View All ({scenarios.length})
+              </Button>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Scenarios Grid */}
@@ -223,7 +291,7 @@ export default function ScenariosPage() {
                       disabled={scenario.status === 'running'}
                       className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 disabled:opacity-50"
                     >
-                      <PlayIcon className="h-3 w-3 mr-1" />
+                      <Play className="h-3 w-3 mr-1" />
                       Run
                     </button>
                     <button className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
@@ -235,7 +303,7 @@ export default function ScenariosPage() {
                     onClick={() => deleteScenario(scenario.id)}
                     className="text-red-600 hover:text-red-900"
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -255,7 +323,7 @@ export default function ScenariosPage() {
                 onClick={() => setShowCreateModal(true)}
                 className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
               >
-                <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                <Plus className="-ml-1 mr-2 h-5 w-5" />
                 New Scenario
               </button>
             </div>

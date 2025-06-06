@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@/lib/supabase'
+import toast from 'react-hot-toast'
 import DashboardLayout from '@/components/layout/dashboard-layout'
 import {
   PlayIcon,
@@ -17,11 +18,11 @@ import {
 interface OptimizationJob {
   id: string
   type: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: string
   progress: number
   created_at: string
   completed_at: string | null
-  error_message: string | null
+  error: string | null
 }
 
 interface OptimizationStats {
@@ -57,7 +58,7 @@ export default function OptimizationPage() {
   const fetchJobs = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      if (!session) {return}
 
       const { data: workspaceUser } = await supabase
         .from('workspace_users')
@@ -65,7 +66,7 @@ export default function OptimizationPage() {
         .eq('user_id', session.user.id)
         .single()
 
-      if (!workspaceUser) return
+      if (!workspaceUser) {return}
 
       const { data } = await supabase
         .from('jobs')
@@ -84,7 +85,7 @@ export default function OptimizationPage() {
   const fetchStats = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      if (!session) {return}
 
       const { data: workspaceUser } = await supabase
         .from('workspace_users')
@@ -92,7 +93,7 @@ export default function OptimizationPage() {
         .eq('user_id', session.user.id)
         .single()
 
-      if (!workspaceUser) return
+      if (!workspaceUser) {return}
 
       const workspaceId = workspaceUser.workspace_id
 
@@ -144,7 +145,7 @@ export default function OptimizationPage() {
     try {
       setRunningOptimization(true)
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not authenticated')
+      if (!session) {throw new Error('Not authenticated')}
 
       const response = await fetch('/api/optimization', {
         method: 'POST',
@@ -165,7 +166,7 @@ export default function OptimizationPage() {
       await fetchJobs()
     } catch (error) {
       console.error('Error starting optimization:', error)
-      alert(error instanceof Error ? error.message : 'Failed to start optimization')
+      toast.error(error instanceof Error ? error.message : 'Failed to start optimization')
     } finally {
       setRunningOptimization(false)
     }
@@ -174,7 +175,7 @@ export default function OptimizationPage() {
   const stopJob = async (jobId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not authenticated')
+      if (!session) {throw new Error('Not authenticated')}
 
       const response = await fetch(`/api/jobs/${jobId}/stop`, {
         method: 'POST',
@@ -192,14 +193,14 @@ export default function OptimizationPage() {
       await fetchJobs()
     } catch (error) {
       console.error('Error stopping job:', error)
-      alert(error instanceof Error ? error.message : 'Failed to stop job')
+      toast.error(error instanceof Error ? error.message : 'Failed to stop job')
     }
   }
 
   const rerunJob = async (jobId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not authenticated')
+      if (!session) {throw new Error('Not authenticated')}
 
       const response = await fetch(`/api/jobs/${jobId}/rerun`, {
         method: 'POST',
@@ -217,7 +218,7 @@ export default function OptimizationPage() {
       await fetchJobs()
     } catch (error) {
       console.error('Error rerunning job:', error)
-      alert(error instanceof Error ? error.message : 'Failed to rerun job')
+      toast.error(error instanceof Error ? error.message : 'Failed to rerun job')
     }
   }
 
@@ -472,9 +473,9 @@ export default function OptimizationPage() {
                       </div>
                     )}
                     
-                    {job.error_message && (
+                    {job.error && (
                       <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
-                        <p className="text-sm text-red-700">{job.error_message}</p>
+                        <p className="text-sm text-red-700">{job.error}</p>
                       </div>
                     )}
                   </div>

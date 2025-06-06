@@ -2,429 +2,321 @@
 
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@/lib/supabase'
-import DashboardLayout from '@/components/layout/dashboard-layout'
-import {
-  UserIcon,
-  BuildingOfficeIcon,
-  KeyIcon,
-  BellIcon,
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { toast } from '@/lib/external/sonner-mock'
+import { 
+  BuildingOfficeIcon, 
   GlobeAltIcon,
   CurrencyDollarIcon,
+  ClockIcon,
+  LanguageIcon
 } from '@heroicons/react/24/outline'
 
-interface Profile {
-  id: string
-  full_name: string
-  email: string
-  workspace_id: string
-}
-
-interface Workspace {
+interface WorkspaceSettings {
   id: string
   name: string
-  settings: {
-    default_origin_country?: string
-    default_destination_country?: string
-    currency?: string
-    timezone?: string
-    notifications?: {
-      email_reviews?: boolean
-      email_optimizations?: boolean
-      email_reports?: boolean
-    }
-  }
+  plan: string
+  stripe_customer_id: string | null
+  created_at: string
+  updated_at: string
 }
 
-export default function SettingsPage() {
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [workspace, setWorkspace] = useState<Workspace | null>(null)
+interface FormData {
+  workspace_name: string
+  workspace_description: string
+  timezone: string
+  currency: string
+  language: string
+  auto_classification: boolean
+  notification_frequency: 'immediate' | 'daily' | 'weekly'
+  data_retention_days: number
+}
+
+export default function GeneralSettingsPage() {
+  const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('profile')
   const [formData, setFormData] = useState({
-    full_name: '',
     workspace_name: '',
-    default_origin_country: '',
-    default_destination_country: 'US',
+    workspace_description: '',
+    timezone: 'UTC',
     currency: 'USD',
-    timezone: 'America/New_York',
-    email_reviews: true,
-    email_optimizations: true,
-    email_reports: false
+    language: 'en',
+    auto_classification: true,
+    notification_frequency: 'immediate' as 'immediate' | 'daily' | 'weekly',
+    data_retention_days: 365
   })
+
   const supabase = createBrowserClient()
 
   useEffect(() => {
-    fetchUserData()
+    fetchWorkspaceData()
   }, [])
 
-  const fetchUserData = async () => {
+  const fetchWorkspaceData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const response = await fetch('/api/settings/workspaces')
+      if (!response.ok) {
+        throw new Error('Failed to fetch workspaces')
+      }
+      
+      const { workspaces } = await response.json()
+      const currentWorkspace = workspaces?.[0] // Get the first workspace for now
 
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      if (profileData) {
-        setProfile(profileData)
-        
-        // Fetch workspace
-        const { data: workspaceData } = await supabase
-          .from('workspaces')
-          .select('*')
-          .eq('id', profileData.workspace_id)
-          .single()
-
-        if (workspaceData) {
-          setWorkspace(workspaceData)
-          setFormData({
-            full_name: profileData.full_name || '',
-            workspace_name: workspaceData.name || '',
-            default_origin_country: workspaceData.settings?.default_origin_country || '',
-            default_destination_country: workspaceData.settings?.default_destination_country || 'US',
-            currency: workspaceData.settings?.currency || 'USD',
-            timezone: workspaceData.settings?.timezone || 'America/New_York',
-            email_reviews: workspaceData.settings?.notifications?.email_reviews ?? true,
-            email_optimizations: workspaceData.settings?.notifications?.email_optimizations ?? true,
-            email_reports: workspaceData.settings?.notifications?.email_reports ?? false
-          })
-        }
+      if (currentWorkspace) {
+        setWorkspace(currentWorkspace)
+        setFormData({
+          workspace_name: currentWorkspace.name || '',
+          workspace_description: '',
+          timezone: 'UTC',
+          currency: 'USD',
+          language: 'en',
+          auto_classification: true,
+          notification_frequency: 'immediate',
+          data_retention_days: 365
+        })
       }
     } catch (error) {
-      console.error('Error fetching user data:', error)
+      console.error('Error fetching workspace data:', error)
+      toast.error('Failed to load workspace settings')
     } finally {
       setLoading(false)
     }
   }
 
-  const saveProfile = async () => {
-    if (!profile) return
-    
+  const saveSettings = async () => {
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ full_name: formData.full_name })
-        .eq('id', profile.id)
+      if (!workspace?.id) {
+        throw new Error('No workspace selected')
+      }
 
-      if (error) throw error
-      
-      setProfile({ ...profile, full_name: formData.full_name })
-    } catch (error) {
-      console.error('Error updating profile:', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const saveWorkspace = async () => {
-    if (!workspace) return
-    
-    setSaving(true)
-    try {
-      const { error } = await supabase
-        .from('workspaces')
-        .update({
-          name: formData.workspace_name,
-          settings: {
-            ...workspace.settings,
-            default_origin_country: formData.default_origin_country,
-            default_destination_country: formData.default_destination_country,
-            currency: formData.currency,
-            timezone: formData.timezone,
-            notifications: {
-              email_reviews: formData.email_reviews,
-              email_optimizations: formData.email_optimizations,
-              email_reports: formData.email_reports
-            }
-          }
+      const response = await fetch(`/api/settings/workspaces/${workspace.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: formData.workspace_name
         })
-        .eq('id', workspace.id)
-
-      if (error) throw error
-      
-      setWorkspace({
-        ...workspace,
-        name: formData.workspace_name,
-        settings: {
-          ...workspace.settings,
-          default_origin_country: formData.default_origin_country,
-          default_destination_country: formData.default_destination_country,
-          currency: formData.currency,
-          timezone: formData.timezone,
-          notifications: {
-            email_reviews: formData.email_reviews,
-            email_optimizations: formData.email_optimizations,
-            email_reports: formData.email_reports
-          }
-        }
       })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save settings')
+      }
+
+      const result = await response.json()
+      toast.success(result.message || 'General settings updated successfully')
+      fetchWorkspaceData()
     } catch (error) {
-      console.error('Error updating workspace:', error)
+      console.error('Error saving settings:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to save settings')
     } finally {
       setSaving(false)
     }
   }
 
-  const tabs = [
-    { id: 'profile', name: 'Profile', icon: UserIcon },
-    { id: 'workspace', name: 'Workspace', icon: BuildingOfficeIcon },
-    { id: 'notifications', name: 'Notifications', icon: BellIcon },
-    { id: 'security', name: 'Security', icon: KeyIcon },
-  ]
+
 
   if (loading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
     )
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your account and workspace preferences
-          </p>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">General Settings</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Configure your workspace and application preferences
+        </p>
+      </div>
 
-        <div className="flex flex-col lg:flex-row lg:space-x-8">
-          {/* Sidebar */}
-          <div className="lg:w-1/4">
-            <nav className="space-y-1">
-              {tabs.map((tab) => {
-                const Icon = tab.icon
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md ${
-                      activeTab === tab.id
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className="mr-3 h-5 w-5" />
-                    {tab.name}
-                  </button>
-                )
-              })}
-            </nav>
-          </div>
-
-          {/* Content */}
-          <div className="lg:w-3/4">
-            <div className="bg-white shadow rounded-lg">
-              {activeTab === 'profile' && (
-                <div className="p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Information</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                      <input
-                        type="text"
-                        value={formData.full_name}
-                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Email</label>
-                      <input
-                        type="email"
-                        value={profile?.email || ''}
-                        disabled
-                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-500"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
-                    </div>
-                    <div className="pt-4">
-                      <button
-                        onClick={saveProfile}
-                        disabled={saving}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {saving ? 'Saving...' : 'Save Profile'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'workspace' && (
-                <div className="p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Workspace Settings</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Workspace Name</label>
-                      <input
-                        type="text"
-                        value={formData.workspace_name}
-                        onChange={(e) => setFormData({ ...formData, workspace_name: e.target.value })}
-                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Default Origin Country</label>
-                        <input
-                          type="text"
-                          value={formData.default_origin_country}
-                          onChange={(e) => setFormData({ ...formData, default_origin_country: e.target.value })}
-                          placeholder="CN"
-                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Default Destination Country</label>
-                        <select
-                          value={formData.default_destination_country}
-                          onChange={(e) => setFormData({ ...formData, default_destination_country: e.target.value })}
-                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="US">United States</option>
-                          <option value="CA">Canada</option>
-                          <option value="GB">United Kingdom</option>
-                          <option value="DE">Germany</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Currency</label>
-                        <select
-                          value={formData.currency}
-                          onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="USD">USD - US Dollar</option>
-                          <option value="EUR">EUR - Euro</option>
-                          <option value="GBP">GBP - British Pound</option>
-                          <option value="CAD">CAD - Canadian Dollar</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Timezone</label>
-                        <select
-                          value={formData.timezone}
-                          onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="America/New_York">Eastern Time</option>
-                          <option value="America/Chicago">Central Time</option>
-                          <option value="America/Denver">Mountain Time</option>
-                          <option value="America/Los_Angeles">Pacific Time</option>
-                          <option value="Europe/London">London</option>
-                          <option value="Europe/Paris">Paris</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="pt-4">
-                      <button
-                        onClick={saveWorkspace}
-                        disabled={saving}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {saving ? 'Saving...' : 'Save Workspace'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'notifications' && (
-                <div className="p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Notification Preferences</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-900">Review Queue Updates</h4>
-                        <p className="text-sm text-gray-500">Get notified when items are added to the review queue</p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={formData.email_reviews}
-                        onChange={(e) => setFormData({ ...formData, email_reviews: e.target.checked })}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-900">Optimization Results</h4>
-                        <p className="text-sm text-gray-500">Get notified when optimization jobs complete</p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={formData.email_optimizations}
-                        onChange={(e) => setFormData({ ...formData, email_optimizations: e.target.checked })}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-900">Weekly Reports</h4>
-                        <p className="text-sm text-gray-500">Receive weekly summary reports</p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={formData.email_reports}
-                        onChange={(e) => setFormData({ ...formData, email_reports: e.target.checked })}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                    </div>
-                    <div className="pt-4">
-                      <button
-                        onClick={saveWorkspace}
-                        disabled={saving}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {saving ? 'Saving...' : 'Save Notifications'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'security' && (
-                <div className="p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Security Settings</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Password</h4>
-                      <p className="text-sm text-gray-500 mb-4">
-                        To change your password, you'll need to reset it using the forgot password feature.
-                      </p>
-                      <button className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        Reset Password
-                      </button>
-                    </div>
-                    <div className="border-t pt-4">
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Two-Factor Authentication</h4>
-                      <p className="text-sm text-gray-500 mb-4">
-                        Add an extra layer of security to your account.
-                      </p>
-                      <button className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        Enable 2FA
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+      {/* Workspace Information */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BuildingOfficeIcon className="h-5 w-5" />
+            Workspace Information
+          </CardTitle>
+          <CardDescription>
+            Basic information about your workspace
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="workspace_name">Workspace Name</Label>
+              <Input
+                id="workspace_name"
+                type="text"
+                value={formData.workspace_name}
+                onChange={(e) => setFormData({ ...formData, workspace_name: e.target.value })}
+                placeholder="Enter workspace name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="workspace_description">Description</Label>
+              <Input
+                id="workspace_description"
+                type="text"
+                value={formData.workspace_description}
+                onChange={(e) => setFormData({ ...formData, workspace_description: e.target.value })}
+                placeholder="Brief description of your workspace"
+              />
             </div>
           </div>
-        </div>
+        </CardContent>
+      </Card>
+
+      {/* Regional Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <GlobeAltIcon className="h-5 w-5" />
+            Regional Settings
+          </CardTitle>
+          <CardDescription>
+            Configure timezone, currency, and language preferences
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <ClockIcon className="h-4 w-4" />
+                Timezone
+              </Label>
+              <Select value={formData.timezone} onValueChange={(value) => setFormData({ ...formData, timezone: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="UTC">UTC</SelectItem>
+                  <SelectItem value="America/New_York">Eastern Time (EST/EDT)</SelectItem>
+                  <SelectItem value="America/Chicago">Central Time (CST/CDT)</SelectItem>
+                  <SelectItem value="America/Denver">Mountain Time (MST/MDT)</SelectItem>
+                  <SelectItem value="America/Los_Angeles">Pacific Time (PST/PDT)</SelectItem>
+                  <SelectItem value="Europe/London">London (GMT/BST)</SelectItem>
+                  <SelectItem value="Europe/Paris">Paris (CET/CEST)</SelectItem>
+                  <SelectItem value="Asia/Tokyo">Tokyo (JST)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <CurrencyDollarIcon className="h-4 w-4" />
+                Currency
+              </Label>
+              <Select value={formData.currency} onValueChange={(value) => setFormData({ ...formData, currency: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD ($)</SelectItem>
+                  <SelectItem value="EUR">EUR (€)</SelectItem>
+                  <SelectItem value="GBP">GBP (£)</SelectItem>
+                  <SelectItem value="CAD">CAD (C$)</SelectItem>
+                  <SelectItem value="JPY">JPY (¥)</SelectItem>
+                  <SelectItem value="AUD">AUD (A$)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <LanguageIcon className="h-4 w-4" />
+                Language
+              </Label>
+              <Select value={formData.language} onValueChange={(value) => setFormData({ ...formData, language: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="es">Spanish</SelectItem>
+                  <SelectItem value="fr">French</SelectItem>
+                  <SelectItem value="de">German</SelectItem>
+                  <SelectItem value="it">Italian</SelectItem>
+                  <SelectItem value="pt">Portuguese</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Application Preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Application Preferences</CardTitle>
+          <CardDescription>
+            Configure how the application behaves and processes data
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-medium">Auto-Classification</Label>
+              <p className="text-xs text-gray-500">Automatically classify products when uploaded</p>
+            </div>
+            <Switch
+              checked={formData.auto_classification}
+              onCheckedChange={(checked) => setFormData({ ...formData, auto_classification: checked })}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Notification Frequency</Label>
+            <Select 
+              value={formData.notification_frequency} 
+              onValueChange={(value: 'immediate' | 'daily' | 'weekly') => setFormData({ ...formData, notification_frequency: value })}
+            >
+              <SelectTrigger className="w-full md:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="immediate">Immediate</SelectItem>
+                <SelectItem value="daily">Daily Digest</SelectItem>
+                <SelectItem value="weekly">Weekly Summary</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Data Retention (Days)</Label>
+            <Input
+              type="number"
+              value={formData.data_retention_days}
+              onChange={(e) => setFormData({ ...formData, data_retention_days: parseInt(e.target.value) || 365 })}
+              min="30"
+              max="2555"
+              className="w-full md:w-48"
+            />
+            <p className="text-xs text-gray-500">
+              How long to keep classification and optimization data (30-2555 days)
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button
+          onClick={saveSettings}
+          disabled={saving}
+          className="w-full md:w-auto"
+        >
+          {saving ? 'Saving...' : 'Save Settings'}
+        </Button>
       </div>
-    </DashboardLayout>
+    </div>
   )
 }

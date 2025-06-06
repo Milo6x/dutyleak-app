@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+build/
+dist/
+out/
+
+# Environment files
+.env*
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# Coverage
+coverage/
+
+# Generated files
+*.generated.*
+src/types/database.types.ts
+
+# Package files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.tmp
+*.temp
+
+# Documentation
+CHANGELOG.md
+
+# Config files that should maintain specific formatting
+*.json
+*.yml
+*.yaml

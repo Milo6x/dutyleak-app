@@ -1,5 +1,4 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { TaricClient } from '@/lib/external/taric-client';
 import { UsitcClient } from '@/lib/external/usitc-client';
@@ -7,8 +6,7 @@ import { CacheManager } from '@/lib/caching/cache-manager';
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
     // Check authentication
     const { data: { session } } = await supabase.auth.getSession();

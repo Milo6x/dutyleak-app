@@ -1,0 +1,65 @@
+# TypeScript Error Fixing Project Requirements Document (PRD)
+
+## Project Overview
+Fix all 203 TypeScript errors in the DutyLeak application to ensure type safety and code quality.
+
+## Current State
+- 203 TypeScript errors across multiple files
+- Main error categories:
+  1. Database schema mismatches (missing tables/views)
+  2. Missing service methods
+  3. Type instantiation issues
+  4. Property access errors
+  5. Method signature mismatches
+
+## Error Breakdown by File
+- scenario-service.ts: 42 errors
+- in-app-service.ts: 16 errors
+- optimization-engine.ts: 14 errors
+- email-service.ts: 11 errors
+- notification-manager.ts: 5 errors
+- savings-analysis-engine.ts: 4 errors
+- permissions.ts: 3 errors
+- job-processor.ts: 1 error
+- cookie-handler.ts: 8 errors
+- validation-test.ts: 5 errors
+- Other files: remaining errors
+
+## Key Error Categories
+
+### 1. Database Schema Issues
+- Missing tables: scenario_products, enhanced_scenarios, scenario_comparisons, notification_logs
+- Missing RPC functions: get_reviewer_workload_stats, get_effective_duty_rate
+- Missing views and relationships
+
+### 2. Service Method Issues
+- EmailNotificationService missing: sendOverdueReviewEmail, sendWorkloadWarningEmail, sendSystemAlertEmail
+- SavingsAnalysisEngine missing: analyzeBatch method
+- Type mismatches in method signatures
+
+### 3. Type System Issues
+- Deep type instantiation problems
+- Property access on undefined types
+- Generic type constraint violations
+
+## Success Criteria
+- All 203 TypeScript errors resolved
+- Code compiles without errors (npx tsc --noEmit returns 0 errors)
+- No breaking changes to existing functionality
+- Proper type safety maintained
+
+## Implementation Strategy
+1. Fix database schema types first (highest impact)
+2. Implement missing service methods
+3. Resolve type instantiation issues
+4. Fix property access errors
+5. Validate all changes with TypeScript compiler
+
+## Constraints
+- Maintain existing API contracts
+- Preserve database relationships
+- Keep backward compatibility
+- Follow existing code patterns
+
+## Timeline
+Target: Complete all error fixes systematically, tracking progress through TaskMaster to maintain context across sessions.

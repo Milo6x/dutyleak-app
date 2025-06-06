@@ -76,7 +76,7 @@ export class ZonosClient {
       console.error('Zonos API error:', error);
       return {
         success: false,
-        error: error.message || 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   }

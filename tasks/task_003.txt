@@ -1,0 +1,11 @@
+# Task ID: 3
+# Title: Implement Basic HS Code Classification
+# Status: pending
+# Dependencies: None
+# Priority: medium
+# Description: Develop the core AI-powered HS code classification engine, including automated suggestions with confidence scores and a manual override system for user review.
+# Details:
+
+
+# Test Strategy:
+

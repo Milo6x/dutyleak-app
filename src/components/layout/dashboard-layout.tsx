@@ -1,361 +1,532 @@
 'use client'
 
-import { ReactNode, useState, useEffect } from 'react'
+import { ReactNode, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase'
 import { User } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import toast from 'react-hot-toast'
+
+import { DashboardLoader } from '@/components/ui/enhanced-loading'
+import { Breadcrumb, BreadcrumbItem } from '@/components/ui/breadcrumb'
+import { GlobalSearch } from '@/components/ui/global-search'
+import { KeyboardShortcuts } from '@/components/ui/keyboard-shortcuts'
+import { MobileNav } from '@/components/ui/mobile-nav'
 import {
-  HomeIcon,
-  CubeIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
-  BeakerIcon,
-  Cog6ToothIcon,
-  ArrowRightOnRectangleIcon,
-  Bars3Icon,
-  XMarkIcon,
-  UserCircleIcon,
-} from '@heroicons/react/24/outline'
+  LayoutDashboard,
+  Package,
+  Upload,
+  BarChart3,
+  Settings,
+  LogOut,
+  Search,
+  Bell,
+  User as UserIcon,
+  Menu,
+  X,
+  ChevronDown,
+  Building2,
+  Users,
+  CreditCard,
+  FileText,
+  Zap,
+  CheckCircle,
+  Calculator
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { DashboardErrorBoundary } from '@/components/error/error-boundary'
+import performanceOptimizer from '@/lib/performance/performance-optimizer'
+import { handleError } from '@/lib/error/error-handler'
+import { usePerformanceMonitoring, trackDashboardLoad, trackDashboardLoadComplete } from '@/lib/performance/dashboard-metrics'
+// Temporarily comment out bundle optimizer import until module is created
+// import { preloadRouteComponents } from '@/lib/performance/bundle-optimizer'
 
 interface DashboardLayoutProps {
   children: ReactNode
 }
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { 
-    name: 'Data Pipeline', 
-    href: '/data-pipeline', 
-    icon: CubeIcon,
-    children: [
-      { name: 'CSV Imports', href: '/products/import' },
-      { name: 'SP-API Connections', href: '/sp-api' },
-      { name: 'Background Jobs', href: '/jobs' }
-    ]
-  },
-  { 
-    name: 'Products', 
-    href: '/products', 
-    icon: CubeIcon,
-    children: [
-      { name: 'Product Catalog', href: '/products' },
-      { name: 'HS Classification', href: '/classification', badge: '5' }
-    ]
-  },
-  { 
-    name: 'Analytics', 
-    href: '/analytics', 
-    icon: ChartBarIcon,
-    children: [
-      { name: 'Profitability', href: '/profitability' },
-      { name: 'Savings Explorer', href: '/savings' },
-      { name: 'Review Queue', href: '/review-queue', badge: '12' },
-      { name: 'Duty Explorer', href: '/duty-explorer' }
-    ]
-  },
-  { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
-  { name: 'Admin', href: '/admin', icon: UserCircleIcon },
-  { name: 'Help & Resources', href: '/help', icon: ClipboardDocumentListIcon },
-]
-
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<any>(null)
   const [workspace, setWorkspace] = useState<any>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const router = useRouter()
   const pathname = usePathname()
+
+  const navigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, current: pathname === '/dashboard' },
+    { name: 'Products', href: '/products', icon: Package, current: pathname.startsWith('/products') },
+    { name: 'Classification', href: '/classification', icon: FileText, current: pathname.startsWith('/classification') },
+    { name: 'Landed Cost', href: '/landed-cost', icon: Calculator, current: pathname.startsWith('/landed-cost') },
+    { name: 'Optimization', href: '/optimization', icon: Zap, current: pathname.startsWith('/optimization') },
+    { name: 'Analytics', href: '/analytics', icon: BarChart3, current: pathname.startsWith('/analytics') },
+    { name: 'Review Queue', href: '/review-queue', icon: CheckCircle, current: pathname.startsWith('/review-queue') },
+    { name: 'Scenarios', href: '/scenarios', icon: Building2, current: pathname.startsWith('/scenarios') },
+    { name: 'Data Pipeline', href: '/data-pipeline', icon: Upload, current: pathname.startsWith('/data-pipeline') },
+    { name: 'Settings', href: '/settings', icon: Settings, current: pathname.startsWith('/settings') },
+  ]
   const supabase = createBrowserClient()
 
+  // Initialize performance monitoring
+  usePerformanceMonitoring('DashboardLayout')
+
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        setUser(session.user)
-        await fetchUserData(session.user.id)
-      }
-      setLoading(false)
-    }
+    let isMounted = true;
+    let subscription: any;
 
-    getUser()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_OUT' || !session) {
-          setUser(null)
-          setProfile(null)
-          setWorkspace(null)
-          router.push('/auth/login')
-        } else if (session?.user) {
-          setUser(session.user)
-          await fetchUserData(session.user.id)
+    // Fetch notifications from API instead of using mock data
+    const fetchNotifications = async () => {
+      if (!user || !isMounted) {return;}
+      try {
+        const response = await fetch('/api/notifications');
+        if (response.ok) {
+          const data = await response.json();
+          if (isMounted) {
+            setNotifications(data.notifications || []);
+            setUnreadCount(data.notifications?.filter((n: any) => !n.read).length || 0);
+          }
+        } else {
+          // Fallback to empty notifications on error
+          if (isMounted) {
+            setNotifications([]);
+            setUnreadCount(0);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+        // Fallback to empty notifications on error
+        if (isMounted) {
+          setNotifications([]);
+          setUnreadCount(0);
         }
       }
-    )
+    };
 
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const fetchUserData = async (userId: string) => {
-    try {
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (profileData) {
-        setProfile(profileData)
-      }
-
-      // Fetch workspace
-      const { data: workspaceData } = await supabase
-        .from('workspace_users')
-        .select(`
-          workspace_id,
-          role,
-          workspaces (
-            id,
-            name,
-            plan
+    const fetchData = async (userId: string) => {
+      try {
+        // Use performance optimizer for data fetching
+        const [profileData, workspaceData] = await Promise.all([
+          performanceOptimizer.optimizedQuery(
+            supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', userId)
+              .single(),
+            {
+              cacheKey: `profile_${userId}`,
+              cacheTTL: 5 * 60 * 1000, // 5 minutes
+              enableMetrics: true
+            }
+          ),
+          performanceOptimizer.optimizedQuery(
+            supabase
+              .from('workspace_users')
+              .select(`
+                workspace_id,
+                role,
+                workspaces (
+                  id,
+                  name,
+                  plan
+                )
+              `)
+              .eq('user_id', userId)
+              .single(),
+            {
+              cacheKey: `workspace_user_${userId}`,
+              cacheTTL: 10 * 60 * 1000, // 10 minutes
+              enableMetrics: true
+            }
           )
-        `)
-        .eq('user_id', userId)
-        .single()
+        ])
 
-      if (workspaceData?.workspaces) {
-        setWorkspace(workspaceData.workspaces)
+        if (profileData && isMounted) {
+          setProfile(profileData)
+        }
+
+        if ((workspaceData as any)?.data?.workspaces && isMounted) {
+          setWorkspace((workspaceData as any).data.workspaces)
+          
+          // Preload critical data
+          await performanceOptimizer.preloadCriticalData(
+            userId,
+            (workspaceData as any).data.workspaces.id
+          )
+        }
+      } catch (error) {
+        const appError = handleError(
+          error as Error,
+          {
+            component: 'DashboardLayout',
+            action: 'fetchData',
+            userId
+          },
+          false // Don't show toast
+        )
+        
+        console.error('Error fetching user data:', appError)
+        if (isMounted) {
+          setProfile(null)
+          setWorkspace(null)
+          setLoading(false)
+        }
+      }
+    }
+
+    const initializeAuth = async () => {
+      if (!isMounted) {return;}
+      
+      const loadStartTime = trackDashboardLoad()
+      
+      try {
+        // Set up auth state listener
+        const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
+          async (event, session) => {
+            if (!isMounted) {return;}
+
+            // Only log auth changes in development mode
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Auth state change:', event, !!session?.user)
+            }
+            
+            if (event === 'SIGNED_OUT') {
+              router.push('/auth/login')
+            }
+          }
+        );
+        
+        subscription = authSubscription;
+
+        // Check initial user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+        if (userError) {
+          console.error('Error getting user:', userError);
+          if (isMounted) {
+            setUser(null)
+            setProfile(null)
+            setWorkspace(null)
+            setLoading(false);
+            router.push('/auth/login');
+          }
+          return;
+        }
+
+        if (user && isMounted) {
+          setUser(user);
+          try {
+            await fetchData(user.id);
+            await fetchNotifications(); // Fetch notifications for initial user
+            if (isMounted) {
+              setLoading(false);
+              trackDashboardLoadComplete(false);
+            }
+          } catch (error) {
+            console.error('Error fetching initial data:', error)
+            if (isMounted) {
+              setLoading(false);
+              // Don't redirect on data fetch error, user is authenticated
+            }
+          }
+        } else if (isMounted) {
+          setLoading(false);
+          router.push('/auth/login');
+        }
+      } catch (error) {
+        const appError = handleError(
+          error as Error,
+          {
+            component: 'DashboardLayout',
+            action: 'initializeAuth',
+            userId: user?.id || 'unknown'
+          },
+          false // Don't show toast, we'll redirect
+        );
+        
+        console.error('Error in initializeAuth:', appError);
+        if (isMounted) {
+          setLoading(false);
+          router.push('/auth/login');
+        }
+      }
+    };
+
+    initializeAuth();
+
+    return () => {
+      isMounted = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+  }, []) // Remove user?.id dependency to prevent infinite loop
+
+  // Separate effect for pathname changes to handle route preloading
+  useEffect(() => {
+    if (user && !loading) {
+      // Route preloading can be implemented here when needed
+      // For now, we'll just ensure the user state is properly tracked
+    }
+  }, [pathname, user, loading]);
+
+  // Generate breadcrumb items based on current path
+  const generateBreadcrumbs = useCallback((): BreadcrumbItem[] => {
+    const pathSegments = pathname.split('/').filter(Boolean)
+    const breadcrumbs: BreadcrumbItem[] = []
+    
+    // Map path segments to readable labels
+    const pathLabels: Record<string, string> = {
+      'dashboard': 'Dashboard',
+      'products': 'Products',
+      'classification': 'Classification',
+      'optimization': 'Optimization',
+      'analytics': 'Analytics',
+      'review-queue': 'Review Queue',
+      'scenarios': 'Scenarios',
+      'data-pipeline': 'Data Pipeline',
+      'settings': 'Settings',
+      'admin': 'Admin',
+      'users': 'Users',
+      'logs': 'Logs',
+      'backup': 'Backup'
+    }
+    
+    let currentPath = ''
+    pathSegments.forEach((segment, index) => {
+      currentPath += `/${segment}`
+      const isLast = index === pathSegments.length - 1
+      
+      breadcrumbs.push({
+        label: pathLabels[segment] || segment.charAt(0).toUpperCase() + segment.slice(1),
+        href: isLast ? undefined : currentPath,
+        current: isLast
+      })
+    })
+    
+    return breadcrumbs
+  }, [pathname])
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${notificationId}/read`, {
+        method: 'PATCH'
+      });
+      
+      if (response.ok) {
+        setNotifications(prev => 
+          prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
       }
     } catch (error) {
-      console.error('Error fetching user data:', error)
+      console.error('Failed to mark notification as read:', error);
+      toast.error('Failed to mark notification as read');
     }
-  }
-
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut()
-      toast.success('Signed out successfully')
-    } catch (error) {
-      toast.error('Error signing out')
-    }
-  }
+  };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-      </div>
-    )
+    return <DashboardLoader />
   }
 
   return (
-    <div className="min-h-screen bg-white flex">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0">
-        <div className="flex flex-col flex-grow bg-white border-r border-gray-100">
-          {/* Logo */}
-          <div className="flex h-16 items-center px-6 border-b border-gray-100">
-            <Link href="/dashboard" className="flex items-center">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
-                <span className="text-white font-bold text-sm">DL</span>
-              </div>
-              <span className="text-xl font-bold text-blue-500">DutyLeak</span>
-            </Link>
-          </div>
+    <DashboardErrorBoundary>
+      <div className="flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="hidden lg:flex lg:flex-shrink-0 lg:w-64 bg-white dark:bg-gray-800 shadow-lg">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700">
+              <Link href="/dashboard" className="flex items-center space-x-2">
+                <img src="/logo.png" alt="DutyLeak Logo" className="h-8 w-auto" />
+                <span className="text-xl font-semibold text-gray-800 dark:text-white">DutyLeak</span>
+              </Link>
 
-          {/* Search */}
-          <div className="px-6 py-4">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                placeholder="Search products, HS codes, invoices..."
-                className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                <kbd className="inline-flex items-center px-2 py-1 border border-gray-200 rounded text-xs font-sans font-medium text-gray-400">⌘K</kbd>
-              </div>
             </div>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 px-4 pb-4 space-y-1">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href || (item.children && item.children.some(child => pathname === child.href))
-              return (
-                <div key={item.name}>
-                  <Link
-                    href={item.href}
-                    className={`group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
-                  >
-                    <item.icon className={`mr-3 h-5 w-5 flex-shrink-0 ${
-                      isActive ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500'
-                    }`} />
-                    <span className="flex-1">{item.name}</span>
-                    {item.children && (
-                      <svg className={`ml-2 h-4 w-4 transition-transform ${
-                        isActive ? 'rotate-90' : ''
-                      }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    )}
-                  </Link>
-                  {item.children && isActive && (
-                    <div className="ml-6 mt-1 space-y-1">
-                      {item.children.map((child) => (
-                        <Link
-                          key={child.name}
-                          href={child.href}
-                          className={`group flex items-center px-3 py-2 text-sm rounded-lg transition-colors ${
-                            pathname === child.href
-                              ? 'bg-blue-50 text-blue-700 font-medium'
-                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                          }`}
-                        >
-                          <span className="flex-1">{child.name}</span>
-                          {child.badge && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              {child.badge}
-                            </span>
-                          )}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </nav>
-
-          {/* User section */}
-          <div className="p-4 border-t border-gray-100">
-            <div className="flex items-center">
-              <UserCircleIcon className="h-8 w-8 text-gray-400" />
-              <div className="ml-3 flex-1">
-                <p className="text-sm font-medium text-gray-900">
-                  {profile?.full_name || user?.email}
-                </p>
-                <p className="text-xs text-gray-500">{workspace?.name}</p>
-              </div>
-              <button
-                onClick={handleSignOut}
-                className="text-gray-400 hover:text-gray-600 p-1"
-                title="Sign out"
-              >
-                <ArrowRightOnRectangleIcon className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile sidebar */}
-      <div className={`fixed inset-0 z-50 lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}>
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
-        <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-white">
-          <div className="flex h-16 items-center justify-between px-4 border-b border-gray-100">
-            <Link href="/dashboard" className="flex items-center">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
-                <span className="text-white font-bold text-sm">DL</span>
-              </div>
-              <span className="text-xl font-bold text-blue-500">DutyLeak</span>
-            </Link>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
-          </div>
-          <nav className="flex-1 space-y-1 px-2 py-4">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href
-              return (
+            <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+              {navigation.map((item) => (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
-                    isActive
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
-                  onClick={() => setSidebarOpen(false)}
+                  className={cn(
+                    'flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                    item.current
+                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                  )}
+
                 >
-                  <item.icon className="mr-3 h-6 w-6 flex-shrink-0" />
+                  <item.icon className="mr-3 h-5 w-5 flex-shrink-0" aria-hidden="true" />
                   {item.name}
                 </Link>
-              )
-            })}
-          </nav>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className="lg:pl-64 flex-1">
-        {/* Top navigation */}
-        <div className="sticky top-0 z-40 bg-white border-b border-gray-100">
-          <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="text-gray-500 hover:text-gray-600 lg:hidden mr-4"
+              ))}
+            </nav>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white"
+                onClick={async () => {
+                  try {
+                    await supabase.auth.signOut();
+                    router.push('/auth/login');
+                  } catch (error) {
+                    console.error('Error signing out:', error);
+                    toast.error('Failed to sign out');
+                  }
+                }}
               >
-                <Bars3Icon className="h-6 w-6" />
-              </button>
-              <div className="hidden lg:block">
-                <h1 className="text-2xl font-bold text-gray-900">DutyLeak</h1>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              {/* Search for mobile */}
-              <div className="lg:hidden">
-                <button className="text-gray-400 hover:text-gray-600">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </button>
-              </div>
-              
-              {/* Notifications */}
-              <button className="relative text-gray-400 hover:text-gray-600">
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19c-5 0-8-3-8-6s3-6 8-6 8 3 8 6-3 6-8 6z" />
-                </svg>
-                <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-xs font-medium text-white">1</span>
-                </span>
-              </button>
-              
-              {/* Theme toggle */}
-              <button className="text-gray-400 hover:text-gray-600">
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              </button>
+                <LogOut className="mr-3 h-5 w-5" />
+                Sign out
+              </Button>
             </div>
           </div>
-        </div>
+        </aside>
 
-        {/* Page content */}
-        <main className="flex-1">
-          {children}
-        </main>
+        {/* Main content area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Top bar */}
+          <header className="sticky top-0 z-40 flex items-center justify-between h-16 px-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 lg:px-6">
+            <MobileNav navigation={navigation} />
+            <div className="flex-1 ml-4 lg:ml-0">
+              <div className="w-full max-w-md">
+                <GlobalSearch placeholder="Search products, classifications, etc..." />
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              {/* Keyboard Shortcuts */}
+              <KeyboardShortcuts />
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <Bell className="h-6 w-6" />
+                    {unreadCount > 0 && (
+                      <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs">{unreadCount}</Badge>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
+                  <DropdownMenuLabel className="px-3 py-2">Notifications</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {notifications.length > 0 ? (
+                    notifications.map((notification) => (
+                      <DropdownMenuItem
+                        key={notification.id}
+                        className={`flex flex-col items-start p-2 ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/50' : ''}`}
+                        onSelect={() => !notification.read && handleMarkAsRead(notification.id)}
+                      >
+                        <p className={`text-sm ${!notification.read ? 'font-semibold' : ''}`}>{notification.message}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{notification.time}</p>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <div className="p-4 text-sm text-gray-500 dark:text-gray-400">
+                      No new notifications.
+                    </div>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings/notifications" className="flex items-center justify-center py-2 text-sm text-primary hover:bg-gray-100 dark:hover:bg-gray-700">
+                      View all notifications
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center space-x-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={profile?.avatar_url} alt={profile?.full_name || user?.email} />
+                      <AvatarFallback>
+                        {(profile?.full_name || user?.email || '')
+                          .split(' ')
+                          .map(word => word[0])
+                          .join('')
+                          .toUpperCase()
+                          .slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
+                      {profile?.full_name || user?.email}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="px-3 py-2">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white">{profile?.full_name || user?.email}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{workspace?.name} ({workspace?.plan})</div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings/profile" className="flex items-center">
+                      <UserIcon className="mr-2 h-4 w-4" /> Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="flex items-center">
+                      <Settings className="mr-2 h-4 w-4" /> Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings/billing" className="flex items-center">
+                      <CreditCard className="mr-2 h-4 w-4" /> Billing
+                    </Link>
+                  </DropdownMenuItem>
+                  {workspace?.role === 'owner' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/settings/team" className="flex items-center">
+                        <Users className="mr-2 h-4 w-4" /> Manage Team
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={async () => {
+                    try {
+                      await supabase.auth.signOut();
+                      router.push('/auth/login');
+                    } catch (error) {
+                      console.error('Error signing out:', error);
+                      toast.error('Failed to sign out');
+                    }
+                  }} className="flex items-center text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-700/20">
+                    <LogOut className="mr-2 h-4 w-4" /> Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </header>
+
+          {/* Page content */}
+          <main className="flex-1 overflow-y-auto overflow-x-hidden">
+            {/* Breadcrumb Navigation */}
+            <div className="bg-white border-b border-gray-200 px-4 py-3 sm:px-6">
+              <Breadcrumb items={generateBreadcrumbs()} />
+            </div>
+            
+            <div className="p-4 sm:p-6 lg:p-8">
+              {loading ? <DashboardLoader /> : children}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </DashboardErrorBoundary>
   )
 }

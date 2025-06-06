@@ -95,7 +95,7 @@ export class UsitcClient {
             dutyPercentage: parseFloat(dutyPercentage.toFixed(2)),
             vatPercentage,
             effectiveDate: new Date().toISOString().split('T')[0], // Current date
-            expiryDate: null // No expiry for this example
+            expiryDate: undefined // No expiry for this example
           }
         ]
       };
@@ -103,7 +103,7 @@ export class UsitcClient {
       console.error('USITC API error:', error);
       return {
         success: false,
-        error: error.message || 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   }

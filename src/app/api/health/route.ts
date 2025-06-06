@@ -1,16 +1,14 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 // This is a simple test endpoint to validate the API functionality
 export async function GET(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
     // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -43,8 +41,8 @@ export async function GET(req: NextRequest) {
       timestamp: new Date().toISOString(),
       database: 'connected',
       user: {
-        id: session.user.id,
-        email: session.user.email
+        id: user.id,
+        email: user.email
       },
       externalApiStatus
     });

@@ -1,378 +1,379 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@/lib/supabase'
-import DashboardLayout from '@/components/layout/dashboard-layout'
+import React, { useMemo } from 'react'
 import Link from 'next/link'
 import {
-  CubeIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
-  CurrencyDollarIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
   PlusIcon,
+  DocumentTextIcon,
+  ClockIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ChartBarIcon,
+  CurrencyDollarIcon,
+  ShoppingBagIcon,
+  UserGroupIcon,
+  ArrowUpIcon,
+  ArrowDownIcon
 } from '@heroicons/react/24/outline'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
+// Remove unused import since Separator component is not found
+import { DollarSign, Package, Clock, TrendingUp, TrendingDown, AlertCircle, CheckCircle, XCircle, Loader2, RefreshCw } from 'lucide-react'
+import { DashboardGridSkeleton, DashboardCardSkeleton } from '@/components/ui/skeleton'
+import LoadingSpinner from '@/components/ui/loading-spinner'
+import { SavingsChart } from '@/components/charts/savings-chart'
+import { ProductMetricsChart } from '@/components/charts/product-metrics-chart'
+import { JobStatusChart } from '@/components/charts/job-status-chart'
+import { DashboardLoader } from '@/components/ui/loading-spinner'
+import { useDashboardData } from '@/hooks/use-dashboard-data'
+
+interface Product {
+  id: string
+  title: string
+  cost: number
+  created_at: string
+}
+
+interface Job {
+  id: string
+  type: string
+  status: string
+  progress: number
+  created_at: string
+  completed_at?: string
+  error_message?: string
+}
 
 interface DashboardStats {
-  totalProducts: number
-  totalSavings: number
-  pendingReviews: number
-  activeJobs: number
-  recentProducts: any[]
-  recentJobs: any[]
+  overview: {
+    totalProducts: number
+    totalSavings: number
+    pendingReviews: number
+    activeJobs: number
+    totalProductValue: number
+  }
+  trends: {
+    products: {
+      current: number
+      previous: number
+      change: number
+    }
+    savings: {
+      current: number
+      previous: number
+      change: number
+    }
+  }
+  charts: {
+    monthlySavings: Array<{
+      month: string
+      savings: number
+      costs: number
+      count: number
+    }>
+    productMetrics: Array<{
+      category: string
+      count: number
+      avgSavings: number
+      totalValue: number
+      color: string
+    }>
+    jobStatus: {
+      counts: Record<string, number>
+      recentJobs: Job[]
+    }
+  }
+  lastUpdated: string
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalProducts: 0,
-    totalSavings: 0,
-    pendingReviews: 0,
-    activeJobs: 0,
-    recentProducts: [],
-    recentJobs: [],
-  })
-  const [loading, setLoading] = useState(true)
-  const supabase = createBrowserClient()
+  const { data: stats, isLoading: loading, error, refreshData, isRefetching } = useDashboardData()
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  const fetchDashboardData = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      // Get user's workspace
-      const { data: workspaceUser } = await supabase
-        .from('workspace_users')
-        .select('workspace_id')
-        .eq('user_id', session.user.id)
-        .single()
-
-      if (!workspaceUser) return
-
-      const workspaceId = workspaceUser.workspace_id
-
-      // Fetch all stats in parallel
-      const [
-        productsResult,
-        savingsResult,
-        reviewsResult,
-        jobsResult,
-        recentProductsResult,
-        recentJobsResult,
-      ] = await Promise.all([
-        // Total products
-        supabase
-          .from('products')
-          .select('id', { count: 'exact' })
-          .eq('workspace_id', workspaceId),
-        
-        // Total savings
-        supabase
-          .from('savings_ledger')
-          .select('savings_amount')
-          .eq('workspace_id', workspaceId),
-        
-        // Pending reviews
-        supabase
-          .from('review_queue')
-          .select('id', { count: 'exact' })
-          .eq('workspace_id', workspaceId)
-          .eq('status', 'pending'),
-        
-        // Active jobs
-        supabase
-          .from('jobs')
-          .select('id', { count: 'exact' })
-          .eq('workspace_id', workspaceId)
-          .in('status', ['pending', 'running']),
-        
-        // Recent products
-        supabase
-          .from('products')
-          .select('id, title, asin, cost, created_at')
-          .eq('workspace_id', workspaceId)
-          .order('created_at', { ascending: false })
-          .limit(5),
-        
-        // Recent jobs
-        supabase
-          .from('jobs')
-          .select('id, type, status, progress, created_at')
-          .eq('workspace_id', workspaceId)
-          .order('created_at', { ascending: false })
-          .limit(5),
-      ])
-
-      const totalSavings = savingsResult.data?.reduce(
-        (sum, item) => sum + (item.savings_amount || 0),
-        0
-      ) || 0
-
-      setStats({
-        totalProducts: productsResult.count || 0,
-        totalSavings,
-        pendingReviews: reviewsResult.count || 0,
-        activeJobs: jobsResult.count || 0,
-        recentProducts: recentProductsResult.data || [],
-        recentJobs: recentJobsResult.data || [],
-      })
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const formatCurrency = (amount: number) => {
+  const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
-    }).format(amount)
-  }
+      currency: 'USD'
+    })
+  }, [])
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+  const dateFormatter = useMemo(() => {
+    return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit',
+      minute: '2-digit'
     })
+  }, [])
+
+  const handleRefresh = () => {
+    refreshData()
   }
 
-  const getJobStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-600 bg-green-100'
-      case 'running':
-        return 'text-blue-600 bg-blue-100'
-      case 'failed':
-        return 'text-red-600 bg-red-100'
-      default:
-        return 'text-gray-600 bg-gray-100'
-    }
-  }
-
-  if (loading) {
+  if (loading && !stats) {
     return (
-      <DashboardLayout>
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="bg-white p-6 rounded-lg shadow">
-                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                <div className="h-8 bg-gray-200 rounded w-1/2"></div>
-              </div>
-            ))}
+      <div className="p-6 space-y-6">
+        {/* Header Skeleton */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="h-8 w-48 bg-gray-200 rounded animate-pulse mb-2"></div>
+            <div className="h-4 w-64 bg-gray-200 rounded animate-pulse"></div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="h-10 w-20 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-10 w-32 bg-gray-200 rounded animate-pulse"></div>
           </div>
         </div>
-      </DashboardLayout>
+        
+        {/* Stats Grid Skeleton */}
+        <DashboardGridSkeleton />
+        
+        {/* Cards Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <DashboardCardSkeleton />
+          <DashboardCardSkeleton />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <ExclamationTriangleIcon className="h-5 w-5 text-red-400 mr-2" />
+            <span className="text-red-800">{error?.message || 'An error occurred'}</span>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="mt-3 inline-flex items-center px-3 py-2 border border-red-300 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!stats) {
+    return (
+      <div className="p-8">
+        <div className="text-center text-gray-500">No data available</div>
+      </div>
     )
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <div className="flex space-x-3">
-            <Link
-              href="/products/import"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-            >
-              <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-              Import Products
-            </Link>
-            <Link
-              href="/optimization"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <ChartBarIcon className="-ml-1 mr-2 h-5 w-5" />
-              Run Optimization
-            </Link>
-          </div>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h1>
+          <p className="text-gray-600">Track your savings, monitor performance, and optimize your import strategy.</p>
         </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefetching}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isRefetching ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </>
+            )}
+          </button>
+          <Link
+            href="/products/import"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Import Products
+          </Link>
+        </div>
+      </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <CubeIcon className="h-6 w-6 text-gray-400" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Total Products
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.totalProducts.toLocaleString()}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
+      {/* Overview Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Total Products */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <ShoppingBagIcon className="h-8 w-8 text-blue-600" />
             </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <CurrencyDollarIcon className="h-6 w-6 text-green-400" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Total Savings
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {formatCurrency(stats.totalSavings)}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <ClipboardDocumentListIcon className="h-6 w-6 text-yellow-400" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Pending Reviews
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.pendingReviews}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <ChartBarIcon className="h-6 w-6 text-blue-400" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Active Jobs
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.activeJobs}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">
+                  Total Products
+                </dt>
+                <dd className="flex items-center">
+                  <span className="text-lg font-medium text-gray-900">
+                    {stats?.overview?.totalProducts?.toLocaleString() || '0'}
+                  </span>
+                  {stats?.trends?.products?.change !== 0 && (
+                    <span className={`ml-2 flex items-center text-sm ${
+                      (stats?.trends?.products?.change || 0) > 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {(stats?.trends?.products?.change || 0) > 0 ? (
+                        <ArrowUpIcon className="h-4 w-4 mr-1" />
+                      ) : (
+                        <ArrowDownIcon className="h-4 w-4 mr-1" />
+                      )}
+                      {Math.abs(stats?.trends?.products?.change || 0).toFixed(1)}%
+                    </span>
+                  )}
+                </dd>
+              </dl>
             </div>
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent Products */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Recent Products
-                </h3>
-                <Link
-                  href="/products"
-                  className="text-sm text-blue-600 hover:text-blue-500"
-                >
-                  View all
-                </Link>
-              </div>
-              <div className="space-y-3">
-                {stats.recentProducts.length > 0 ? (
-                  stats.recentProducts.map((product) => (
-                    <div key={product.id} className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {product.title || product.asin || 'Untitled Product'}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {product.asin && `ASIN: ${product.asin}`}
-                          {product.cost && ` • ${formatCurrency(product.cost)}`}
-                        </p>
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {formatDate(product.created_at)}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500">No products yet</p>
-                )}
-              </div>
+        {/* Total Savings */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <CurrencyDollarIcon className="h-8 w-8 text-green-600" />
+            </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">
+                  Total Savings
+                </dt>
+                <dd className="flex items-center">
+                  <span className="text-lg font-medium text-gray-900">
+                    {currencyFormatter.format(stats?.overview?.totalSavings || 0)}
+                  </span>
+                  {stats?.trends?.savings?.change !== 0 && (
+                    <span className={`ml-2 flex items-center text-sm ${
+                      (stats?.trends?.savings?.change || 0) > 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {(stats?.trends?.savings?.change || 0) > 0 ? (
+                        <ArrowUpIcon className="h-4 w-4 mr-1" />
+                      ) : (
+                        <ArrowDownIcon className="h-4 w-4 mr-1" />
+                      )}
+                      {Math.abs(stats?.trends?.savings?.change || 0).toFixed(1)}%
+                    </span>
+                  )}
+                </dd>
+              </dl>
             </div>
           </div>
+        </div>
 
-          {/* Recent Jobs */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Recent Jobs
-                </h3>
-                <Link
-                  href="/jobs"
-                  className="text-sm text-blue-600 hover:text-blue-500"
-                >
-                  View all
-                </Link>
-              </div>
-              <div className="space-y-3">
-                {stats.recentJobs.length > 0 ? (
-                  stats.recentJobs.map((job) => (
-                    <div key={job.id} className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <p className="text-sm font-medium text-gray-900">
-                            {job.type.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                          </p>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getJobStatusColor(job.status)}`}>
-                            {job.status}
-                          </span>
-                        </div>
-                        {job.status === 'running' && (
-                          <div className="mt-1">
-                            <div className="w-full bg-gray-200 rounded-full h-1.5">
-                              <div
-                                className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                                style={{ width: `${job.progress || 0}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {formatDate(job.created_at)}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500">No jobs yet</p>
-                )}
-              </div>
+        {/* Pending Reviews */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <ClockIcon className="h-8 w-8 text-yellow-600" />
+            </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">
+                  Pending Reviews
+                </dt>
+                <dd className="text-lg font-medium text-gray-900">
+                  {stats?.overview?.pendingReviews || 0}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+
+        {/* Active Jobs */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <DocumentTextIcon className="h-8 w-8 text-purple-600" />
+            </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">
+                  Active Jobs
+                </dt>
+                <dd className="text-lg font-medium text-gray-900">
+                  {stats?.overview?.activeJobs || 0}
+                </dd>
+              </dl>
             </div>
           </div>
         </div>
       </div>
-    </DashboardLayout>
+
+      {/* Analytics Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Savings Chart */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Monthly Savings</h3>
+          <SavingsChart data={stats?.charts?.monthlySavings || []} />
+        </div>
+
+        {/* Product Metrics Chart */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Product Categories</h3>
+          <ProductMetricsChart data={stats?.charts?.productMetrics || []} />
+        </div>
+      </div>
+
+      {/* Job Status Chart */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Background Jobs</h3>
+        <JobStatusChart jobs={stats?.charts?.jobStatus?.recentJobs || []} />
+      </div>
+
+      {/* Quick Actions */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Link
+            href="/products/import"
+            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <PlusIcon className="h-8 w-8 text-blue-600 mr-3" />
+            <div>
+              <p className="font-medium text-gray-900">Import Products</p>
+              <p className="text-sm text-gray-600">Upload CSV or connect SP-API</p>
+            </div>
+          </Link>
+          <Link
+            href="/review-queue"
+            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <ClockIcon className="h-8 w-8 text-yellow-600 mr-3" />
+            <div>
+              <p className="font-medium text-gray-900">Review Classifications</p>
+              <p className="text-sm text-gray-600">Verify HS code assignments</p>
+            </div>
+          </Link>
+          <Link
+            href="/scenarios"
+            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <ChartBarIcon className="h-8 w-8 text-green-600 mr-3" />
+            <div>
+              <p className="font-medium text-gray-900">Scenario Modeling</p>
+              <p className="text-sm text-gray-600">Analyze different strategies</p>
+            </div>
+          </Link>
+        </div>
+      </div>
+
+      {/* Last Updated */}
+      <div className="text-center text-sm text-gray-500">
+        Last updated: {stats?.lastUpdated ? dateFormatter.format(new Date(stats.lastUpdated)) : 'Never'}
+      </div>
+    </div>
   )
 }
+
+
+

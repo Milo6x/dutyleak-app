@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase'
 import { useForm } from 'react-hook-form'
@@ -25,16 +25,7 @@ type SignupFormData = z.infer<typeof signupSchema>
 export default function SignupForm() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  
-  let supabase
-  try {
-    supabase = createBrowserClient()
-    console.log('Supabase client created successfully')
-  } catch (error) {
-    console.error('Failed to create Supabase client:', error)
-    toast.error('Configuration error. Please contact support.')
-    return <div>Configuration error</div>
-  }
+  const supabase = useMemo(() => createBrowserClient(), [])
 
   const {
     register,
@@ -44,15 +35,11 @@ export default function SignupForm() {
     resolver: zodResolver(signupSchema),
   })
 
-  const onError = (errors: any) => {
-    console.log('Form validation errors:', errors)
-  }
+
 
   const onSubmit = async (data: SignupFormData) => {
-    console.log('Form submission started with data:', { email: data.email, fullName: data.fullName, workspaceName: data.workspaceName })
     setIsLoading(true)
     try {
-      console.log('Attempting to sign up user...')
       // Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -62,7 +49,7 @@ export default function SignupForm() {
             full_name: data.fullName,
             workspace_name: data.workspaceName,
           },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?redirectTo=/dashboard`,
         },
       })
 
@@ -72,20 +59,16 @@ export default function SignupForm() {
         return
       }
 
-      console.log('Auth data received:', authData)
-
       if (authData.user && !authData.session) {
-        console.log('User created, email verification required')
         // Store email for potential resend verification
         localStorage.setItem('pendingVerificationEmail', data.email)
-        toast.success('Please check your email to confirm your account!')
+        toast.success('Please check your email to verify your account')
         router.push('/auth/verify-email')
         return
       }
 
-      // If user is immediately signed in, create workspace
-      if (authData.user && authData.session) {
-        console.log('User immediately signed in, creating workspace...')
+      // If user is immediately signed in (email confirmation disabled)
+      if (authData.session) {
         try {
           await createWorkspaceAndProfile(authData.user.id, data.fullName, data.workspaceName)
           toast.success('Account created successfully!')
@@ -101,7 +84,6 @@ export default function SignupForm() {
       console.error('Unexpected error in form submission:', error)
       toast.error('An unexpected error occurred')
     } finally {
-      console.log('Form submission completed, setting loading to false')
       setIsLoading(false)
     }
   }
@@ -151,7 +133,7 @@ export default function SignupForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div>
         <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
           Full Name
@@ -239,7 +221,7 @@ export default function SignupForm() {
       <button
         type="submit"
         disabled={isLoading}
-        onClick={() => console.log('Create Account button clicked')}
+
         className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isLoading ? 'Creating Account...' : 'Create Account'}

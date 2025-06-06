@@ -1,0 +1,169 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Fix Non-Functional Elements",
+      "description": "Address all critical issues related to non-functional buttons, interactive elements, and placeholder content identified in the current state. Ensure core UI components are working as expected.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 2,
+      "title": "Complete CSV Import Workflow",
+      "description": "Implement the full CSV import process for product data, including validation, error handling, and tracking import history.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 3,
+      "title": "Implement Basic HS Code Classification",
+      "description": "Develop the core AI-powered HS code classification engine, including automated suggestions with confidence scores and a manual override system for user review.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 4,
+      "title": "Build Functional Analytics Dashboard",
+      "description": "Replace placeholder content in analytics tabs with real data display. Implement functional analytics cards and basic interactive charts showing key performance indicators.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 5,
+      "title": "Optimize Navigation and Page Structure",
+      "description": "Streamline application navigation by consolidating repetitive pages into tabbed interfaces and implementing breadcrumb navigation for clear path indication.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 6,
+      "title": "Develop Review Queue System",
+      "description": "Build the review queue system to automatically flag low-confidence classifications. Implement the review workflow (approve, reject, modify) and support bulk review actions.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 7,
+      "title": "Implement Scenario Modeling and Comparison",
+      "description": "Implement the functionality for users to create and compare different classification and duty calculation scenarios side-by-side to analyze potential outcomes.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 8,
+      "title": "Integrate FBA Fees and Landed Cost Calculation",
+      "description": "Implement the comprehensive landed cost calculator, including integration with Amazon FBA fee calculations and support for multi-country duty rates.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 9,
+      "title": "Create Optimization Recommendations",
+      "description": "Develop AI-powered suggestions for cost reduction based on classification and duty calculation analysis.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 10,
+      "title": "Enhance Analytics and Reporting",
+      "description": "Expand the analytics dashboard to include savings analysis, profitability insights, performance metrics, trend analysis, and the ability to export reports in multiple formats.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 11,
+      "title": "Refine UI/UX and Frontend Components",
+      "description": "Implement comprehensive UI/UX refinements, ensure design system consistency, optimize frontend components for performance, improve state management, form handling, and data fetching.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 12,
+      "title": "Optimize Application Performance",
+      "description": "Focus on performance optimization across the application, including fast page loading times, efficient API response times, optimized database queries, background jobs for bulk operations, and caching strategies.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 13,
+      "title": "Improve Mobile Responsiveness",
+      "description": "Ensure the application provides a fully functional and optimized user experience on mobile devices.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 14,
+      "title": "Implement Comprehensive Error Handling and Validation",
+      "description": "Develop robust error boundaries, user feedback mechanisms, input validation, and data integrity checks throughout the application.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 15,
+      "title": "Integrate External APIs",
+      "description": "Implement integrations with key external services required for core functionality, including Amazon SP-API, HS Classification services, and Duty Rate APIs.",
+      "details": "",
+      "testStrategy": "",
+      "priority": "medium",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    }
+  ]
+}

@@ -1,52 +1,46 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizationEngine } from '@/lib/duty/optimization-engine';
+import { JobProcessor } from '@/lib/jobs/job-processor';
+import { getWorkspaceAccess, checkUserPermission } from '@/lib/permissions';
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
-    // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    // Get workspace access and check permissions
+    const { user, workspace_id } = await getWorkspaceAccess(supabase);
+    await checkUserPermission(user.id, workspace_id, 'DATA_UPDATE');
 
     // Parse request body
     const body = await req.json();
     const { 
+      type = 'optimization',
       productIds,
       categoryId,
       minPotentialSaving,
-      confidenceThreshold = 0.7
+      confidenceThreshold = 0.7,
+      runInBackground = false
     } = body;
 
-    // Validate request
-    if (!productIds && !categoryId) {
+    // Validate optimization type
+    const validTypes = ['duty_calculation', 'optimization', 'bulk_optimization'];
+    if (!validTypes.includes(type)) {
       return NextResponse.json(
-        { error: 'Missing required fields: either productIds or categoryId must be provided' },
+        { error: `Invalid optimization type. Must be one of: ${validTypes.join(', ')}` },
         { status: 400 }
       );
     }
 
-    // Get user's workspace_id
-    const { data: workspaceUser, error: workspaceError } = await supabase
-      .from('workspace_users')
-      .select('workspace_id')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (workspaceError || !workspaceUser) {
+    // Use workspace_id from permissions check
+    if (!workspace_id) {
       return NextResponse.json(
         { error: 'User not associated with any workspace' },
         { status: 400 }
       );
     }
+
+    const workspaceId = workspace_id;
 
     // Get products to analyze
     let productsToAnalyze: string[] = [];
@@ -60,7 +54,7 @@ export async function POST(req: NextRequest) {
       const { data: products, error: productsError } = await supabase
         .from('products')
         .select('id')
-        .eq('workspace_id', workspaceUser.workspace_id);
+        .eq('workspace_id', workspace_id);
         
       if (productsError) {
         return NextResponse.json(
@@ -79,54 +73,105 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create job for optimization analysis
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .insert({
-        workspace_id: workspaceUser.workspace_id,
-        type: 'optimization_analysis',
-        parameters: {
-          productIds: productsToAnalyze,
-          minPotentialSaving,
-          confidenceThreshold
-        },
-        status: 'pending'
-      })
-      .select()
-      .single();
+    // If running in background or bulk operation, create a job
+    if (runInBackground || type === 'bulk_optimization' || productsToAnalyze.length > 5) {
+      const jobType = type === 'duty_calculation' ? 'bulk_fba_calculation' : 'duty_optimization';
+      
+      // Create background job
+      const { data: job, error: jobError } = await supabase
+        .from('jobs')
+        .insert({
+          workspace_id: workspace_id,
+          type: jobType,
+          status: 'pending',
+          progress: 0,
+          parameters: {
+            productIds: productsToAnalyze,
+            optimizationType: type,
+            minPotentialSaving,
+            confidenceThreshold
+          }
+        })
+        .select('id, type, status, progress, created_at, parameters')
+        .single();
 
-    if (jobError) {
-      return NextResponse.json(
-        { error: 'Failed to create job', details: jobError.message },
-        { status: 500 }
-      );
-    }
+      if (jobError) {
+         return NextResponse.json(
+           { error: 'Failed to create optimization job', details: jobError.message },
+           { status: 500 }
+         );
+       }
 
-    // Add job log
-    await supabase
-      .from('job_logs')
-      .insert({
-        job_id: job.id,
-        level: 'info',
-        message: `Optimization analysis job created for ${productsToAnalyze.length} products`,
-        metadata: { 
-          productCount: productsToAnalyze.length,
-          minPotentialSaving,
-          confidenceThreshold
-        }
-      });
+       // Start job processing in background
+       const jobProcessor = new JobProcessor();
+       jobProcessor.processJob(job.id, jobType, job.parameters as any, supabase)
+         .catch(error => {
+           console.error(`Background optimization job ${job.id} failed:`, error);
+         });
 
-    // Start job processing (async)
-    startOptimizationJob(job.id, productsToAnalyze, workspaceUser.workspace_id, {
-      minPotentialSaving,
-      confidenceThreshold
-    });
+       return NextResponse.json({
+         success: true,
+         jobId: job.id,
+         message: 'Optimization job started in background',
+         job: {
+           id: job.id,
+           type: job.type,
+           status: job.status,
+           progress: job.progress,
+           createdAt: job.created_at
+         }
+       });
+     }
 
-    return NextResponse.json({
-      success: true,
-      jobId: job.id,
-      message: `Optimization analysis started for ${productsToAnalyze.length} products`
-    });
+     // For immediate processing (small datasets)
+     const optimizationEngine = new OptimizationEngine();
+     const results = [];
+
+     if (type === 'duty_calculation') {
+       // Process each product for duty calculation
+       for (const productId of productsToAnalyze.slice(0, 5)) { // Limit to 5 for immediate processing
+         try {
+           const result = await optimizationEngine.generateRecommendations([productId]);
+           results.push({
+             productId,
+             success: true,
+             result
+           });
+         } catch (error) {
+           results.push({
+             productId,
+             success: false,
+             error: error instanceof Error ? error.message : 'Unknown error'
+           });
+         }
+       }
+     } else {
+       // Process each product for optimization
+       for (const productId of productsToAnalyze.slice(0, 5)) {
+         try {
+           const result = await optimizationEngine.generateRecommendations([productId]);
+           results.push({
+             productId,
+             success: true,
+             result
+           });
+         } catch (error) {
+           results.push({
+             productId,
+             success: false,
+             error: error instanceof Error ? error.message : 'Unknown error'
+           });
+         }
+       }
+     }
+
+     return NextResponse.json({
+       success: true,
+       type,
+       processed: results.length,
+       results,
+       message: `${type} completed for ${results.length} products`
+     });
     
   } catch (error) {
     console.error('Optimization API error:', error);
@@ -175,9 +220,7 @@ async function startOptimizationJob(
     
     // Generate recommendations
     const recommendations = await optimizationEngine.generateRecommendations(
-      productIds,
-      supabase,
-      workspaceId
+      productIds
     );
     
     // Store recommendations

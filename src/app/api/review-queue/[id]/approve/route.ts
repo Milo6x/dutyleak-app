@@ -1,5 +1,4 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
@@ -7,8 +6,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
     // Check authentication
     const { data: { session } } = await supabase.auth.getSession();

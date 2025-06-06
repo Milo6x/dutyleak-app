@@ -34,8 +34,8 @@ export default function Home() {
 
   const checkAuthAndRedirect = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
+      const { data: { user }, error } = await supabase.auth.getUser()
+      if (user) {
         router.push('/dashboard')
         return
       }
@@ -78,17 +78,29 @@ export default function Home() {
               </Link>
             </div>
             <div className="hidden md:flex items-center space-x-8">
-              <Link href="#features" className="text-gray-600 hover:text-gray-900 font-medium">
+              <button 
+                onClick={() => {
+                  const featuresSection = document.querySelector('[data-section="features"]')
+                  featuresSection?.scrollIntoView({ behavior: 'smooth' })
+                }}
+                className="text-gray-600 hover:text-gray-900 font-medium cursor-pointer"
+              >
                 Features
+              </button>
+              <button 
+                onClick={() => {
+                  const statusSection = document.querySelector('[data-section="status"]')
+                  statusSection?.scrollIntoView({ behavior: 'smooth' })
+                }}
+                className="text-gray-600 hover:text-gray-900 font-medium cursor-pointer"
+              >
+                System Status
+              </button>
+              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900 font-medium">
+                Dashboard
               </Link>
-              <Link href="#how-it-works" className="text-gray-600 hover:text-gray-900 font-medium">
-                How it Works
-              </Link>
-              <Link href="#pricing" className="text-gray-600 hover:text-gray-900 font-medium">
-                Pricing
-              </Link>
-              <Link href="#testimonials" className="text-gray-600 hover:text-gray-900 font-medium">
-                Testimonials
+              <Link href="/products" className="text-gray-600 hover:text-gray-900 font-medium">
+                Products
               </Link>
               <Link
                 href="/auth/login"
@@ -132,7 +144,13 @@ export default function Home() {
                   Start Free Trial
                   <ArrowRightIcon className="ml-2 h-5 w-5" />
                 </Link>
-                <button className="inline-flex items-center justify-center px-8 py-4 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors">
+                <button 
+                  className="inline-flex items-center justify-center px-8 py-4 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    // Navigate to dashboard for live demo
+                    window.open('/dashboard', '_blank')
+                  }}
+                >
                   Watch Demo
                 </button>
               </div>
@@ -179,7 +197,7 @@ export default function Home() {
       </div>
 
       {/* Features Section */}
-      <div id="features" className="py-20 bg-gray-50">
+      <div id="features" className="py-20 bg-gray-50" data-section="features">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -235,7 +253,7 @@ export default function Home() {
       </div>
 
       {/* System Status */}
-      <div className="bg-gray-50 py-12">
+      <div className="bg-gray-50 py-12" data-section="status">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="px-4 py-5 sm:p-6">

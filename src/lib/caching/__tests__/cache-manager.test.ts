@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { CacheManager } from '../cache-manager';
 
 describe('CacheManager', () => {
@@ -9,7 +9,7 @@ describe('CacheManager', () => {
     cacheManager = new CacheManager();
     
     // Mock Date.now to control time
-    vi.spyOn(Date, 'now').mockImplementation(() => 1000);
+    jest.spyOn(Date, 'now').mockImplementation(() => 1000);
   });
   
   it('should store and retrieve values', async () => {
@@ -34,7 +34,7 @@ describe('CacheManager', () => {
     expect(value).toEqual('expiring-value');
     
     // Advance time by 11 seconds (past TTL)
-    vi.spyOn(Date, 'now').mockImplementation(() => 1000 + 11000);
+    jest.spyOn(Date, 'now').mockImplementation(() => 1000 + 11000);
     
     // Verify it's now expired
     value = await cacheManager.get('expiring-key');
@@ -76,7 +76,7 @@ describe('CacheManager', () => {
   
   it('should get or set values with getOrSet method', async () => {
     // Define a function that computes a value
-    const computeFn = vi.fn().mockResolvedValue('computed-value');
+    const computeFn = jest.fn<() => Promise<string>>().mockResolvedValue('computed-value');
     
     // First call should compute the value
     let value = await cacheManager.getOrSet('compute-key', computeFn);
@@ -89,7 +89,7 @@ describe('CacheManager', () => {
     expect(computeFn).toHaveBeenCalledTimes(1); // Still only called once
     
     // Advance time past default TTL (1 hour)
-    vi.spyOn(Date, 'now').mockImplementation(() => 1000 + 3601000);
+    jest.spyOn(Date, 'now').mockImplementation(() => 1000 + 3601000);
     
     // Now it should compute again
     value = await cacheManager.getOrSet('compute-key', computeFn);

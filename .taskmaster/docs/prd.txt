@@ -1,0 +1,342 @@
+# DutyLeak - Complete Production-Ready Application Development
+## Review-Then-Implement Methodology
+
+## Project Overview
+Develop DutyLeak into a fully functional, production-ready AI-powered duty optimization platform using a **Review-Then-Implement** methodology. This approach ensures we understand existing code quality, identify what's already functional, and build upon existing foundations rather than rebuilding from scratch.
+
+## Review-Then-Implement Methodology
+
+### Core Principles
+1. **Review First**: Before implementing any feature, conduct thorough code review to understand current state
+2. **Assess Implementation Status**: Determine what's working, partially working, or missing
+3. **Incremental Enhancement**: Build upon existing code rather than replacing it
+4. **Quality-Driven Development**: Focus on code quality, testing, and maintainability
+
+### Assessment Criteria for Each Feature
+For each major feature, we will evaluate:
+- **Code Quality**: TypeScript compliance, error handling, code structure
+- **Functionality**: What works end-to-end vs. what's incomplete
+- **Integration**: How well components connect with database, APIs, and UI
+- **Testing**: Existing test coverage and quality
+- **Performance**: Current performance characteristics
+- **Security**: Authentication, authorization, and data protection
+
+### Implementation Strategy
+1. **Code Review Phase**: Analyze existing implementation
+2. **Gap Analysis**: Identify missing functionality and quality issues
+3. **Refactoring Phase**: Improve existing code quality
+4. **Implementation Phase**: Build missing functionality
+5. **Integration Testing**: Ensure new and existing code work together
+6. **Quality Assurance**: Comprehensive testing and validation
+
+## Current Status
+- Basic MVP structure exists with core API endpoints
+- Authentication infrastructure partially implemented
+- Database schema established
+- UI components created but with integration issues
+- Critical bugs preventing proper functionality
+
+## Goals
+1. **Review & Assess**: Comprehensive review of existing codebase
+2. **Fix Critical Issues**: Resolve authentication loops, loading issues, and TypeScript errors
+3. **Complete Core Features**: Implement all missing functionality for a working MVP
+4. **Quality Assurance**: Comprehensive testing strategy and implementation
+5. **Production Readiness**: Deployment, monitoring, and maintenance setup
+6. **Documentation**: Complete technical and user documentation
+7. **Performance Optimization**: Ensure scalable, fast, and reliable operation
+
+## Success Criteria
+- Comprehensive code review completed for all major features
+- Zero critical bugs or TypeScript compilation errors
+- All core user journeys working end-to-end
+- 95%+ test coverage across unit, integration, and E2E tests
+- Production deployment with monitoring and logging
+- Complete documentation for developers and users
+- Performance benchmarks met (< 2s page loads, < 500ms API responses)
+- Security audit passed
+- User acceptance testing completed
+
+## Development Phases
+
+### Phase 1: Foundation Review & Critical Fixes (Days 1-4)
+#### 1.1 Codebase Assessment
+- Review existing TypeScript configuration and fix compilation errors
+- Assess current authentication implementation
+- Review database schema and connection handling
+- Evaluate existing UI components and state management
+
+#### 1.2 Critical Bug Fixes
+- Fix authentication flow and dashboard loading loops
+- Implement proper error boundaries and state management
+- Resolve database connection and RLS policy issues
+- Establish development environment standards
+
+### Phase 2: Core Feature Review & Implementation (Days 5-10)
+#### 2.1 Authentication & User Management
+- **Review**: Assess current Supabase Auth integration
+- **Implement**: Complete missing authentication features
+
+#### 2.2 Product Management System
+- **Review**: Evaluate existing CRUD operations and UI
+- **Implement**: Complete CSV import, search, and filtering
+
+#### 2.3 HS Code Classification
+- **Review**: Assess current AI integration and classification logic
+- **Implement**: Complete batch processing and confidence scoring
+
+#### 2.4 Duty & FBA Calculation
+- **Review**: Evaluate existing calculation engines
+- **Implement**: Complete multi-country support and FBA integration
+
+#### 2.5 Review Queue
+- **Review**: Assess current review interface
+- **Implement**: Complete manual verification and workflow management
+
+### Phase 3: Advanced Features Review & Implementation (Days 11-14)
+#### 3.1 Analytics Dashboard
+- **Review**: Evaluate existing dashboard components and data flow
+- **Implement**: Complete savings analysis and profitability reports
+
+#### 3.2 Scenario Modeling
+- **Review**: Assess current modeling capabilities
+- **Implement**: Complete what-if analysis and optimization tools
+
+#### 3.3 Background Jobs
+- **Review**: Evaluate existing job processing infrastructure
+- **Implement**: Complete queue system and notification handling
+
+### Phase 4: Testing & Quality Assurance (Days 15-17)
+- Review existing test coverage and quality
+- Implement comprehensive unit testing
+- Build integration testing suite
+- Create end-to-end testing workflows
+- Conduct performance testing and optimization
+- Perform security testing and vulnerability assessment
+
+### Phase 5: Production Deployment (Days 18-20)
+- Review current deployment configuration
+- Set up staging and production environments
+- Implement CI/CD pipeline
+- Configure monitoring, logging, and alerting
+- Establish backup and recovery procedures
+
+### Phase 6: Documentation & Training (Days 21-22)
+- Review existing documentation
+- Create comprehensive technical documentation
+- Build user guides and tutorials
+- Develop API documentation
+- Create deployment and maintenance guides
+
+### Phase 7: Final Testing & Launch (Days 23-24)
+- Conduct user acceptance testing
+- Perform final performance benchmarking
+- Complete security audit
+- Execute production launch preparation
+
+## Technical Requirements
+
+### Code Quality Standards
+- Zero TypeScript errors with strict configuration
+- ESLint and Prettier enforcement
+- Mandatory code review process
+- Git workflow with feature branches
+- Conventional commit message standards
+- Minimum 80% code coverage for new code
+
+### Review Process Standards
+- Document current implementation status for each feature
+- Identify reusable vs. replaceable code
+- Assess technical debt and refactoring needs
+- Evaluate performance bottlenecks
+- Review security vulnerabilities
+
+### Testing Strategy
+- **Unit Tests**: Jest + React Testing Library (95% coverage target)
+- **Integration Tests**: Supertest for APIs (90% coverage target)
+- **E2E Tests**: Playwright for user workflows (100% critical path coverage)
+- **Performance Tests**: Lighthouse CI with defined thresholds
+- **Security Tests**: OWASP ZAP automated scanning
+
+### Performance Requirements
+- Page load times < 2 seconds
+- API response times < 500ms
+- Database query optimization
+- Image and asset optimization
+- CDN implementation for static assets
+- Performance monitoring and alerting
+
+### Security Requirements
+- Comprehensive authentication and authorization audit
+- Input validation and sanitization review
+- SQL injection prevention verification
+- XSS protection implementation
+- CSRF protection validation
+- Rate limiting configuration
+- Security headers verification
+
+### Deployment Requirements
+- Docker containerization with multi-stage builds
+- Environment variable management and validation
+- Database migration scripts with rollback capability
+- Automated backup and recovery procedures
+- Comprehensive monitoring and alerting setup
+- Centralized log aggregation and analysis
+
+## Feature Specifications with Review-Implement Structure
+
+### 1. Authentication & User Management
+#### Review Phase
+- Assess current Supabase Auth integration
+- Evaluate existing session management
+- Review role-based access control implementation
+- Check password reset and email verification flows
+
+#### Implementation Phase
+- Complete missing authentication features
+- Implement robust session security
+- Build comprehensive user profile management
+- Add audit logging for authentication events
+
+### 2. Product Management
+#### Review Phase
+- Evaluate existing CRUD operations
+- Assess current search and filtering capabilities
+- Review product categorization system
+- Check data validation and error handling
+
+#### Implementation Phase
+- Complete bulk CSV import with validation
+- Implement advanced search and filtering
+- Build product history and audit trail
+- Add batch operations for product management
+
+### 3. HS Code Classification
+#### Review Phase
+- Assess current AI provider integrations
+- Evaluate classification accuracy and confidence scoring
+- Review batch processing capabilities
+- Check manual review and correction workflows
+
+#### Implementation Phase
+- Complete multi-provider AI integration
+- Implement advanced batch processing
+- Build comprehensive classification analytics
+- Add machine learning model improvement workflows
+
+### 4. Duty & FBA Calculation
+#### Review Phase
+- Evaluate existing calculation engines
+- Assess multi-country duty rate support
+- Review FBA fee integration
+- Check currency conversion accuracy
+
+#### Implementation Phase
+- Complete landed cost calculation engine
+- Implement comprehensive tax calculations
+- Build shipping cost optimization
+- Add real-time rate updates
+
+### 5. Review Queue
+#### Review Phase
+- Assess current review interface usability
+- Evaluate workflow management capabilities
+- Review assignment and tracking systems
+- Check analytics and reporting features
+
+#### Implementation Phase
+- Complete manual review workflows
+- Implement bulk approval/rejection
+- Build comprehensive review analytics
+- Add workflow automation capabilities
+
+### 6. Analytics & Reporting
+#### Review Phase
+- Evaluate existing dashboard components
+- Assess data visualization quality
+- Review export capabilities
+- Check performance metrics tracking
+
+#### Implementation Phase
+- Complete savings dashboard with advanced visualizations
+- Implement profitability analysis reports
+- Build custom reporting capabilities
+- Add real-time analytics updates
+
+### 7. Scenario Modeling
+#### Review Phase
+- Assess current modeling capabilities
+- Evaluate what-if analysis tools
+- Review optimization algorithms
+- Check scenario saving and sharing
+
+#### Implementation Phase
+- Complete advanced scenario modeling
+- Implement optimization recommendations
+- Build scenario comparison tools
+- Add collaborative scenario sharing
+
+### 8. Background Jobs
+#### Review Phase
+- Evaluate existing queue system
+- Assess job processing reliability
+- Review error handling and retry logic
+- Check monitoring and logging capabilities
+
+#### Implementation Phase
+- Complete robust queue system
+- Implement comprehensive error handling
+- Build job monitoring dashboard
+- Add performance optimization
+
+## Risk Assessment
+
+### High Risk
+- Existing code quality may require significant refactoring
+- Authentication security vulnerabilities in current implementation
+- Data integrity issues in existing database operations
+- Performance degradation in current algorithms
+
+### Medium Risk
+- Integration complexity between existing and new components
+- Classification accuracy in current AI implementations
+- User experience issues in existing interfaces
+- Deployment complications with current configuration
+
+### Low Risk
+- UI/UX polish requirements
+- Documentation completeness
+- Training material development
+- Feature enhancement requests
+
+## Success Metrics
+
+### Technical Metrics
+- 100% code review completion for all major features
+- Zero critical bugs in production
+- 95%+ test coverage achieved
+- < 2s average page load time
+- < 500ms average API response time
+- 99.9% uptime
+
+### Process Metrics
+- Code review quality scores
+- Refactoring vs. new development ratio
+- Technical debt reduction percentage
+- Test coverage improvement
+- Performance improvement metrics
+
+### Business Metrics
+- User onboarding completion rate
+- Feature adoption rates
+- User satisfaction scores
+- Support ticket volume reduction
+- Performance improvement impact
+
+## Timeline: 24 Days Total
+
+**Week 1 (Days 1-7)**: Foundation review and critical fixes
+**Week 2 (Days 8-14)**: Core feature review and implementation
+**Week 3 (Days 15-21)**: Advanced features and testing
+**Week 4 (Days 22-24)**: Production deployment and launch
+
+This comprehensive Review-Then-Implement approach ensures DutyLeak becomes a fully functional, production-ready application built upon a solid understanding of existing code quality and capabilities.

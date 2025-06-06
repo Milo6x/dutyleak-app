@@ -1,21 +1,15 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { ScenarioEngine } from '@/lib/duty/scenario-engine';
+import { getWorkspaceAccess, checkUserPermission } from '@/lib/permissions';
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
-    // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    // Get workspace access and check permissions
+    const { user, workspace_id } = await getWorkspaceAccess(supabase);
+    await checkUserPermission(user.id, workspace_id, 'DATA_CREATE');
 
     // Parse request body
     const body = await req.json();
@@ -41,14 +35,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get user's workspace_id
-    const { data: workspaceUser, error: workspaceError } = await supabase
-      .from('workspace_users')
-      .select('workspace_id')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (workspaceError || !workspaceUser) {
+    // Use workspace_id from permissions check
+    if (!workspace_id) {
       return NextResponse.json(
         { error: 'User not associated with any workspace' },
         { status: 400 }
@@ -60,7 +48,7 @@ export async function POST(req: NextRequest) {
       .from('products')
       .select('id, workspace_id')
       .eq('id', productId)
-      .eq('workspace_id', workspaceUser.workspace_id)
+      .eq('workspace_id', workspace_id)
       .single();
 
     if (productError || !product) {
@@ -94,7 +82,7 @@ export async function POST(req: NextRequest) {
         scenarioOptions,
         name,
         description || '',
-        workspaceUser.workspace_id,
+        workspace_id,
         supabase
       );
       
@@ -109,7 +97,7 @@ export async function POST(req: NextRequest) {
             optimized_duty_rate: comparison.alternativeBreakdown.dutyPercentage,
             savings_amount: comparison.potentialYearlySaving,
             savings_percentage: ((comparison.baseBreakdown.dutyPercentage - comparison.alternativeBreakdown.dutyPercentage) / comparison.baseBreakdown.dutyPercentage) * 100,
-            workspace_id: workspaceUser.workspace_id
+            workspace_id: workspace_id
           });
       }
       

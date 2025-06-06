@@ -1,22 +1,17 @@
-import { createDutyLeakServerClient } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import * as Papa from 'papaparse';
 import { OpenAIClient } from '@/lib/external/openai-client';
+import { createClient } from '@supabase/supabase-js';
+import { getWorkspaceAccess, checkUserPermission } from '@/lib/permissions';
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createDutyLeakServerClient(cookieStore);
+    const supabase = createDutyLeakServerClient();
     
-    // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    // Get workspace access and check permissions
+    const { user, workspace_id } = await getWorkspaceAccess(supabase);
+    await checkUserPermission(user.id, workspace_id, 'DATA_CREATE');
 
     // Get form data with file
     const formData = await req.formData();
@@ -30,19 +25,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get user's workspace_id
-    const { data: workspaceUser, error: workspaceError } = await supabase
-      .from('workspace_users')
-      .select('workspace_id')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (workspaceError || !workspaceUser) {
-      return NextResponse.json(
-        { error: 'User not associated with any workspace' },
-        { status: 400 }
-      );
-    }
+    // Use workspace_id from permissions check
 
     // Read file content
     const fileContent = await file.text();
@@ -92,7 +75,7 @@ export async function POST(req: NextRequest) {
     const { data: job, error: jobError } = await supabase
       .from('jobs')
       .insert({
-        workspace_id: workspaceUser.workspace_id,
+        workspace_id: workspace_id,
         type: 'csv_import',
         parameters: {
           filename: file.name,
@@ -114,7 +97,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Start import job (async)
-    startImportJob(job.id, validRows, columnMapping, workspaceUser.workspace_id, categoryId);
+    startImportJob(job.id, validRows, columnMapping, workspace_id, categoryId);
 
     return NextResponse.json({
       success: true,
@@ -299,7 +282,7 @@ function validateRows(
     for (const [expected, original] of Object.entries(columnMapping)) {
       if (original && row[original] !== undefined) {
         // Skip title as it's already handled
-        if (expected === 'title') continue;
+        if (expected === 'title') {continue;}
         
         // Convert numeric fields
         if (['price', 'cost', 'weight', 'length', 'width', 'height', 'yearlyUnits'].includes(expected)) {
@@ -486,8 +469,8 @@ async function startImportJob(
     
     // Update job status to failed
     const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
     
     await supabase
@@ -509,6 +492,3 @@ async function startImportJob(
       });
   }
 }
-
-// Import createClient at the top of the file
-import { createClient } from '@supabase/supabase-js';
