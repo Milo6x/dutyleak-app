@@ -1,6 +1,6 @@
 # Task ID: 29
 # Title: Phase 6: Create Comprehensive User Documentation & Training Materials
-# Status: pending
+# Status: done
 # Dependencies: 8, 10, 12, 14, 16, 18, 20
 # Priority: medium
 # Description: Develop user guides, tutorials, and training materials for the DutyLeak platform.
@@ -8,4 +8,36 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Outline Documentation Structure [done]
+### Dependencies: None
+### Description: Define main sections and overall structure for user documentation (e.g., Introduction, Getting Started, Core Features, Admin Guide, API Reference, Troubleshooting, Glossary). Output a Markdown outline.
+### Details:
+
+
+## 2. Write "Getting Started" Guide [done]
+### Dependencies: None
+### Description: Based on section 2 of USER_DOCUMENTATION_OUTLINE.md, write content for the 'Getting Started' guide. Cover account creation, login, password management, profile, workspace management (creation, invites, roles), and basic navigation. Save as docs/01_GETTING_STARTED.md.
+### Details:
+
+
+## 3. Document Core Features [done]
+### Dependencies: None
+### Description: Based on section 3 of USER_DOCUMENTATION_OUTLINE.md, write detailed documentation for core features: Product Management, HS Classification, Landed Cost, FBA Fees, Scenario Modeling, Analytics, Review Queue, Job Monitoring. Create content for these sections.
+### Details:
+
+
+## 4. Create Admin Guide [done]
+### Dependencies: None
+### Description: Based on section 4 of USER_DOCUMENTATION_OUTLINE.md, write content for the 'Admin Guide'. Cover workspace management (users, roles, settings), API key management, and admin data features. Save as docs/10_ADMIN_GUIDE.md.
+### Details:
+
+
+## 5. Develop Tutorials/Use Cases [done]
+### Dependencies: None
+### Description: Create step-by-step tutorials for 2-3 common user workflows (e.g., Optimizing Landed Cost, Bulk Classification & Review, Scenario Modeling for Sourcing). Save as separate Markdown files.
+### Details:
+
 

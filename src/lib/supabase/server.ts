@@ -12,22 +12,14 @@ export function createDutyLeakServerClient() {
       cookies: {
         get(name: string) {
           try {
-            const cookie = cookieStore.get(name)
-            if (cookie?.value) {
-              // Try to parse the cookie value to check if it's valid JSON
-              if (name.includes('auth-token')) {
-                try {
-                  JSON.parse(cookie.value)
-                } catch (parseError) {
-                  console.warn(`Corrupted auth cookie detected: ${name}`, parseError)
-                  return undefined
-                }
-              }
-            }
-            return cookie?.value
+            const cookie = cookieStore.get(name);
+            // Simply return the cookie value. 
+            // The Supabase client library will handle parsing and validation of the auth token.
+            return cookie?.value;
           } catch (error) {
-            console.warn(`Error reading cookie ${name}:`, error)
-            return undefined
+            // This catch is for errors from cookieStore.get() itself, which should be rare.
+            console.warn(`Error reading cookie ${name}:`, error);
+            return undefined;
           }
         },
         set(name: string, value: string, options: CookieOptions) {

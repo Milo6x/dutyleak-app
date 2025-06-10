@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react' // Added useEffect
+import toast from 'react-hot-toast'; // Added toast import
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -125,79 +126,62 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
   const [showOverrideDialog, setShowOverrideDialog] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [isSubmittingComment, setIsSubmittingComment] = useState(false)
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [pagination, setPagination] = useState({ limit: 50, offset: 0, total: 0 })
+  const [queueSummary, setQueueSummary] = useState<any>(null) 
 
-  // Mock data with proper structure
-  const mockReviewItems: ReviewItem[] = [
-    {
-      id: 'review-1',
-      product_id: 'prod-123',
-      classification_id: 'class-123',
-      status: 'pending',
-      confidence_score: 0.85,
-      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      products: {
-        title: 'Wireless Bluetooth Headphones',
-        asin: 'B08XYZ123',
-        category: 'Electronics',
-        description: 'High-quality wireless headphones with noise cancellation'
-      },
-      classifications: {
-        hs6: '851830',
-        hs8: '85183000',
-        description: 'Headphones and earphones, whether or not combined with a microphone',
-        confidence_score: 0.85,
-        source: 'AI Classification Engine'
-      },
-      type: 'classification',
-      priority: 'high',
-      title: 'Product Classification Review',
-      description: 'AI-suggested HS code classification needs human verification',
-      submittedBy: 'AI Classification Engine',
-      submittedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      productId: 'prod-123',
-      productName: 'Wireless Bluetooth Headphones',
-      currentValue: '8518.30.00',
-      suggestedValue: '8518.40.00',
-      confidence: 0.85,
-      impact: {
-        accuracyImprovement: 15,
-        riskReduction: 8
-      },
-      comments: [
-        {
-          id: 'comment-1',
-          author: 'AI Classification Engine',
-          content: 'Based on product features and description, this appears to be a wireless audio device with noise cancellation.',
-          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          type: 'comment'
-        }
-      ]
+
+  const fetchReviewItems = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({
+        limit: pagination.limit.toString(),
+        offset: pagination.offset.toString(),
+      })
+      if (statusFilter !== 'all') params.append('status', statusFilter)
+      if (priorityFilter !== 'all') params.append('priority', priorityFilter)
+      if (typeFilter !== 'all') params.append('type', typeFilter)
+      
+      const response = await fetch(`/api/review/queue?${params.toString()}`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch review items')
+      }
+      const data = await response.json()
+      setReviewItems(data.items || [])
+      setPagination(data.pagination || { limit: 50, offset: 0, total: 0 })
+      setQueueSummary(data.summary || null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'An unknown error occurred')
+      setReviewItems([]) // Clear items on error
+    } finally {
+      setIsLoading(false)
     }
-  ]
+  }
 
-  const [reviewItems] = useState<ReviewItem[]>(mockReviewItems)
+  useEffect(() => {
+    fetchReviewItems()
+  }, [statusFilter, priorityFilter, typeFilter, pagination.offset, pagination.limit])
 
-  // Filter items based on current filters
-  const filteredItems = useMemo(() => {
-    return reviewItems.filter(item => {
-      const typeMatch = typeFilter === 'all' || item.type === typeFilter
-      const statusMatch = statusFilter === 'all' || item.status === statusFilter
-      const priorityMatch = priorityFilter === 'all' || item.priority === priorityFilter
-      return typeMatch && statusMatch && priorityMatch
-    })
-  }, [reviewItems, typeFilter, statusFilter, priorityFilter])
 
-  // Stats calculations
+  // Filter items based on current filters (client-side filtering is removed as it's now server-side)
+  const filteredItems = reviewItems; // Data is already filtered by API
+
+  // Stats calculations based on queueSummary from API
   const stats = useMemo(() => {
-    const total = filteredItems.length
-    const pending = filteredItems.filter(item => item.status === 'pending').length
-    const inReview = filteredItems.filter(item => item.status === 'in-review').length
-    const completed = filteredItems.filter(item => 
-      item.status === 'approved' || item.status === 'completed'
-    ).length
-    
-    return { total, pending, inReview, completed }
-  }, [filteredItems])
+    if (queueSummary) {
+      return {
+        total: queueSummary.total || 0,
+        pending: queueSummary.pending || 0,
+        inReview: queueSummary.inReview || 0,
+        completed: (queueSummary.approved || 0) + (queueSummary.rejected || 0) + (queueSummary.completed || 0) // Ensure all are numbers
+      };
+    }
+    // Default/fallback if queueSummary is not available
+    return { total: 0, pending: 0, inReview: 0, completed: 0 };
+  }, [queueSummary]);
 
   // Helper functions
   const getTypeIcon = (type: string) => {
@@ -276,18 +260,60 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
   }
 
   // Action handlers
-  const handleBulkApprove = () => {
-    console.log('Bulk approving items:', Array.from(selectedItems))
-    setSelectedItems(new Set())
+  const handleBulkApprove = async () => {
+    if (selectedItems.size === 0) return;
+    try {
+      for (const itemId of selectedItems) {
+        await handleItemAction(itemId, 'approved');
+      }
+      toast.success(`Successfully approved ${selectedItems.size} items.`);
+      setSelectedItems(new Set());
+      fetchReviewItems(); // Refresh list
+    } catch (error) {
+      toast.error('Failed to bulk approve items.');
+    }
   }
 
-  const handleBulkReject = () => {
-    console.log('Bulk rejecting items:', Array.from(selectedItems))
-    setSelectedItems(new Set())
+  const handleBulkReject = async () => {
+    if (selectedItems.size === 0) return;
+     try {
+      for (const itemId of selectedItems) {
+        await handleItemAction(itemId, 'rejected');
+      }
+      toast.success(`Successfully rejected ${selectedItems.size} items.`);
+      setSelectedItems(new Set());
+      fetchReviewItems(); // Refresh list
+    } catch (error) {
+      toast.error('Failed to bulk reject items.');
+    }
   }
 
-  const handleItemAction = (itemId: string, action: 'approve' | 'reject' | 'needs-info') => {
-    console.log(`${action} item:`, itemId)
+  const handleItemAction = async (itemId: string, status: 'approved' | 'rejected' | 'needs-info' | 'in-review') => {
+    try {
+      const response = await fetch(`/api/review/queue`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: itemId, status: status }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to ${status} item`);
+      }
+      toast.success(`Item ${status} successfully.`);
+      fetchReviewItems(); // Refresh list
+      if (selectedItem?.id === itemId) { // If the detailed view item is updated
+        const updatedItemData = await response.json();
+        setSelectedItem(updatedItemData.item);
+      }
+    } catch (error) {
+      console.error(`Error ${status} item:`, error);
+      toast.error(error instanceof Error ? error.message : `Failed to ${status} item.`);
+      throw error; // Re-throw for bulk operations to catch
+    }
+  }
+  
+  const handleRefresh = () => {
+    fetchReviewItems();
   }
 
   const handleAddComment = async () => {
@@ -375,6 +401,20 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
         </div>
       </div>
 
+      {isLoading && !queueSummary && (
+         <div className="flex items-center justify-center h-64">
+           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+         </div>
+      )}
+
+      {!isLoading && error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      
+      {!error && queueSummary && ( // Only render card if summary (and thus initial data) is loaded
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -454,25 +494,18 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                 </div>
               )}
 
-              {/* Error Display */}
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
               {/* Bulk Selection Header */}
-              {filteredItems.some(item => 
+              {filteredItems.length > 0 && filteredItems.some(item => 
                 item.type === 'classification' && 
                 (item.status === 'pending' || item.status === 'needs-info')
               ) && (
                 <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
                   <Checkbox
-                    checked={selectedItems.size > 0}
+                    checked={selectedItems.size > 0 && selectedItems.size === filteredItems.filter(item => item.type === 'classification' && (item.status === 'pending' || item.status === 'needs-info')).length}
                     onCheckedChange={handleSelectAll}
                   />
                   <span className="text-sm font-medium">
-                    Select All Classification Items
+                    Select All Eligible Classification Items
                   </span>
                   {selectedItems.size > 0 && (
                     <Badge variant="secondary">
@@ -483,7 +516,11 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
               )}
 
               {/* Items List */}
-              {filteredItems.length === 0 ? (
+              {isLoading ? (
+                 <div className="flex items-center justify-center py-8">
+                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                 </div>
+              ) : filteredItems.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Eye className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No items match your current filters</p>
@@ -492,8 +529,8 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                 <div className="space-y-4">
                   {filteredItems.map((item) => {
                     const canBeSelected = item.type === 'classification' && 
-                      (item.status === 'pending' || item.status === 'needs-info')
-                    const isSelected = selectedItems.has(item.id)
+                      (item.status === 'pending' || item.status === 'needs-info');
+                    const isSelected = selectedItems.has(item.id);
 
                     return (
                       <Card 
@@ -522,13 +559,13 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
-                                  <h4 className="font-semibold">{item.title || item.products.title}</h4>
+                                  <h4 className="font-semibold">{item.title || item.products?.title || 'Review Item'}</h4>
                                   <p className="text-sm text-muted-foreground mt-1">
-                                    {item.description || item.products.description}
+                                    {item.description || item.products?.description || 'No description'}
                                   </p>
-                                  {item.productName && (
+                                  {(item.productName || item.products?.title) && (
                                     <p className="text-sm text-blue-600 mt-1">
-                                      Product: {item.productName}
+                                      Product: {item.productName || item.products?.title}
                                     </p>
                                   )}
                                 </div>
@@ -540,8 +577,8 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                                   size="sm"
                                   variant="outline"
                                   onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleItemAction(item.id, 'approve')
+                                    e.stopPropagation();
+                                    handleItemAction(item.id, 'approved'); 
                                   }}
                                   className="text-green-600 border-green-200 hover:bg-green-50"
                                 >
@@ -554,9 +591,9 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                               <Badge variant="outline">
                                 {item.priority || 'medium'}
                               </Badge>
-                              {item.confidence && (
+                              {(item.confidence || item.confidence_score) && (
                                 <Badge variant="secondary">
-                                  {Math.round(item.confidence * 100)}% confidence
+                                  {Math.round((item.confidence || item.confidence_score || 0) * 100)}% confidence
                                 </Badge>
                               )}
                             </div>
@@ -564,7 +601,7 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
 
                           {/* Current vs Suggested Values */}
                           {item.currentValue && item.suggestedValue && (
-                            <div className="flex items-center gap-4 p-3 bg-muted rounded-lg text-sm">
+                            <div className="flex items-center gap-4 p-3 mt-2 bg-muted rounded-lg text-sm">
                               <div className="flex-1">
                                 <span className="text-muted-foreground">Current:</span>
                                 <span className="ml-2 font-mono">{item.currentValue}</span>
@@ -578,7 +615,7 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
 
                           {/* Impact Metrics */}
                           {item.impact && (
-                            <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-4 text-sm mt-2">
                               {item.impact.costSavings && (
                                 <div className="flex items-center gap-1">
                                   <DollarSign className="h-3 w-3 text-green-600" />
@@ -595,7 +632,7 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                           )}
 
                           {/* Metadata */}
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
                             <div className="flex items-center gap-4">
                               <div className="flex items-center gap-1">
                                 <User className="h-3 w-3" />
@@ -745,7 +782,7 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                       <h4 className="font-medium mb-3">Review Actions</h4>
                       <div className="flex items-center gap-3">
                         <Button 
-                          onClick={() => handleItemAction(selectedItem.id, 'approve')}
+                          onClick={() => handleItemAction(selectedItem.id, 'approved')}
                           className="bg-green-600 hover:bg-green-700"
                         >
                           <CheckCircle className="h-4 w-4 mr-1" />
@@ -753,7 +790,7 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
                         </Button>
                         <Button 
                           variant="outline"
-                          onClick={() => handleItemAction(selectedItem.id, 'reject')}
+                          onClick={() => handleItemAction(selectedItem.id, 'rejected')}
                           className="text-red-600 border-red-200 hover:bg-red-50"
                         >
                           Reject
@@ -816,12 +853,14 @@ export function ReviewQueue({ className }: ReviewQueueProps) {
           selectedItems={getSelectedItemsData()}
           mode={selectedItems.size > 1 ? 'bulk' : 'single'}
           onOverrideComplete={(success, message) => {
-            console.log('Override completed:', { success, message })
-            setShowOverrideDialog(false)
-            setSelectedItems(new Set())
+            console.log('Override completed:', { success, message });
+            setShowOverrideDialog(false);
+            setSelectedItems(new Set());
+            fetchReviewItems(); // Refresh items after override
           }}
         />
       </Card>
+      )} {/* End of !error && queueSummary conditional rendering */}
     </div>
-  )
+  );
 }

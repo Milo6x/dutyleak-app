@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -9,362 +9,304 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
+import { Input } from '@/components/ui/input' // Kept for potential future use, not in current create form
 import { Label } from '@/components/ui/label'
 import {
   PlayIcon,
   PauseIcon,
   StopIcon,
-  TrashIcon,
+  // TrashIcon, // Not used currently
   ClockIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   XCircleIcon,
   QueueListIcon,
   CpuChipIcon,
-  ArrowPathIcon,
-  CalendarIcon
+  // ArrowPathIcon, // Not used currently
+  // CalendarIcon // Not used currently
 } from '@heroicons/react/24/outline'
-import { batchProcessor, BatchJob, BatchProgressUpdate } from '@/lib/batch/advanced-batch-processor'
-import { formatDistanceToNow, format } from 'date-fns'
-import { toast } from '@/lib/external/sonner-mock'
-import { BatchScheduler } from './batch-scheduler'
+import { formatDistanceToNow, format, parseISO } from 'date-fns'
+import { toast } from 'sonner';
+import { BatchScheduler } from './batch-scheduler' // Assuming this component does not import batchProcessor directly
+import useSWR from 'swr'
+
+// Client-side representation of a BatchJob, ensure fields match API response from GET /api/jobs
+export interface ClientBatchJob {
+  id: string;
+  type: string;
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'dead_letter';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  progress: number; // This is the top-level percentage from the DB
+  metadata: { // This is the 'parameters' field from the jobs table
+    productIds?: string[];
+    parameters?: any; // Original parameters passed to the job
+    retryCount?: number;
+    maxRetries?: number;
+    workspaceId?: string;
+    // Detailed progress from AdvancedBatchProcessor might be nested here if API returns it
+    progress?: { 
+        total: number;
+        completed: number;
+        failed: number;
+        current?: string;
+        percentage: number; // This is the detailed one, API might return top-level one too
+    };
+    error?: { message: string; code?: string; details?: any };
+    [key: string]: any; 
+  };
+  created_at: string; // ISO string
+  started_at?: string | null; // ISO string
+  completed_at?: string | null; // ISO string
+  error?: string | null; // Top-level error message string from DB
+}
+
 
 interface BatchProcessingDashboardProps {
-  selectedProducts?: string[]
-  onJobComplete?: (jobId: string) => void
+  selectedProducts?: string[]; // Product IDs selected in another part of the UI for new job creation
+  onJobComplete?: (jobId: string) => void; // Callback when a job completes (might be harder to track without events)
 }
+
+const fetcher = (url: string) => fetch(url).then(res => {
+  if (!res.ok) {
+    const error = new Error('An error occurred while fetching the data.');
+    // Attach extra info to the error object.
+    // error.info = await res.json();
+    // error.status = res.status;
+    throw error;
+  }
+  return res.json();
+});
 
 export default function BatchProcessingDashboard({
   selectedProducts = [],
-  onJobComplete
+  onJobComplete // This callback might be tricky to implement reliably without direct events or websockets
 }: BatchProcessingDashboardProps) {
-  const [jobs, setJobs] = useState<BatchJob[]>([])
-  const [queueStatus, setQueueStatus] = useState({
-    pending: 0,
-    running: 0,
-    maxConcurrent: 3,
-    totalJobs: 0
-  })
-  const [activeTab, setActiveTab] = useState('active')
-  const [isCreateJobOpen, setIsCreateJobOpen] = useState(false)
-  const [newJobType, setNewJobType] = useState<BatchJob['type']>('classification')
-  const [newJobPriority, setNewJobPriority] = useState<BatchJob['priority']>('medium')
-  const [progressUpdates, setProgressUpdates] = useState<Map<string, BatchProgressUpdate>>(new Map())
+  
+  const [activeTab, setActiveTab] = useState('active');
+  const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
+  // Ensure these types align with what the POST /api/jobs endpoint expects for 'type' and 'priority'
+  const [newJobType, setNewJobType] = useState<ClientBatchJob['type']>('classification'); 
+  const [newJobPriority, setNewJobPriority] = useState<ClientBatchJob['priority']>('medium');
 
-  // Load jobs and queue status
-  const loadData = useCallback(() => {
-    setJobs(batchProcessor.getJobs())
-    setQueueStatus(batchProcessor.getQueueStatus())
-  }, [])
-
-  // Set up event listeners
-  useEffect(() => {
-    const handleJobAdded = (job: BatchJob) => {
-      loadData()
-      toast.success(`Job "${job.type}" added to queue`)
+  const { data: apiJobData, error: apiJobError, mutate: mutateJobs, isLoading: isLoadingJobs } = useSWR<{ jobs: ClientBatchJob[], total: number }>(
+    '/api/jobs?limit=100&order=created_at:desc', // Fetch more jobs, sort by creation
+    fetcher,
+    { 
+      refreshInterval: 5000, // Poll for updates every 5 seconds
     }
+  );
 
-    const handleJobStarted = (job: BatchJob) => {
-      loadData()
-      toast.success(`Job "${job.type}" started`)
-    }
+  const jobs: ClientBatchJob[] = apiJobData?.jobs || [];
+  const totalJobsFromApi = apiJobData?.total || 0;
 
-    const handleJobCompleted = (job: BatchJob) => {
-      loadData()
-      toast.success(`Job "${job.type}" completed successfully`)
-      onJobComplete?.(job.id)
-    }
+  const queueStatus = jobs.reduce((acc, job) => {
+    if (job.status === 'pending') acc.pending++;
+    if (job.status === 'running') acc.running++;
+    return acc;
+  }, { pending: 0, running: 0, maxConcurrent: 3, totalJobs: totalJobsFromApi }); // Assuming maxConcurrent is known or static for display
 
-    const handleJobFailed = (job: BatchJob) => {
-      loadData()
-      toast.error(`Job "${job.type}" failed: ${job.error?.message}`)
-    }
-
-    const handleJobPaused = (job: BatchJob) => {
-      loadData()
-      toast.info(`Job "${job.type}" paused`)
-    }
-
-    const handleJobResumed = (job: BatchJob) => {
-      loadData()
-      toast.success(`Job "${job.type}" resumed`)
-    }
-
-    const handleJobCancelled = (job: BatchJob) => {
-      loadData()
-      toast.warning(`Job "${job.type}" cancelled`)
-    }
-
-    const handleProgressUpdate = (update: BatchProgressUpdate) => {
-      setProgressUpdates(prev => new Map(prev.set(update.jobId, update)))
-    }
-
-    const handleJobRetry = ({ job, attempt }: { job: BatchJob; attempt: number }) => {
-      toast.info(`Retrying job "${job.type}" (attempt ${attempt})`)
-    }
-
-    // Add event listeners
-    batchProcessor.on('jobAdded', handleJobAdded)
-    batchProcessor.on('jobStarted', handleJobStarted)
-    batchProcessor.on('jobCompleted', handleJobCompleted)
-    batchProcessor.on('jobFailed', handleJobFailed)
-    batchProcessor.on('jobPaused', handleJobPaused)
-    batchProcessor.on('jobResumed', handleJobResumed)
-    batchProcessor.on('jobCancelled', handleJobCancelled)
-    batchProcessor.on('progressUpdate', handleProgressUpdate)
-    batchProcessor.on('jobRetry', handleJobRetry)
-
-    // Initial load
-    loadData()
-
-    // Cleanup
-    return () => {
-      batchProcessor.removeListener('jobAdded', handleJobAdded)
-      batchProcessor.removeListener('jobStarted', handleJobStarted)
-      batchProcessor.removeListener('jobCompleted', handleJobCompleted)
-      batchProcessor.removeListener('jobFailed', handleJobFailed)
-      batchProcessor.removeListener('jobPaused', handleJobPaused)
-      batchProcessor.removeListener('jobResumed', handleJobResumed)
-      batchProcessor.removeListener('jobCancelled', handleJobCancelled)
-      batchProcessor.removeListener('progressUpdate', handleProgressUpdate)
-      batchProcessor.removeListener('jobRetry', handleJobRetry)
-    }
-  }, [loadData, onJobComplete])
-
-  // Create new job
   const handleCreateJob = async () => {
     if (selectedProducts.length === 0) {
-      toast.error('No products selected')
-      return
+      toast.error('No products selected to process.');
+      return;
     }
 
     try {
-      const jobId = await batchProcessor.addJob(
-        newJobType,
-        {
-          productIds: selectedProducts,
-          parameters: {
-            batchSize: 10,
-            retryAttempts: 3
+      const response = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: newJobType,
+          priority: newJobPriority,
+          parameters: { // This structure must match what POST /api/jobs expects
+            productIds: selectedProducts,
+            // Add any other parameters specific to the job type if your API needs them
+            // e.g., custom_param: 'value'
           }
-        },
-        newJobPriority
-      )
+        }),
+      });
 
-      setIsCreateJobOpen(false)
-      toast.success(`Job created with ID: ${jobId}`)
-    } catch (error) {
-      console.error('Error creating job:', error)
-      toast.error('Failed to create job')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to create job' }));
+        throw new Error(errorData.error || 'Server error creating job');
+      }
+
+      const result = await response.json();
+      setIsCreateJobOpen(false);
+      toast.success(`Job "${newJobType}" created successfully with ID: ${result.jobId}`);
+      mutateJobs(); // Re-fetch job list
+    } catch (error: any) {
+      console.error('Error creating job:', error);
+      toast.error(error.message || 'Failed to create job');
     }
-  }
+  };
 
-  // Job control actions
-  const handlePauseJob = async (jobId: string) => {
-    const success = await batchProcessor.pauseJob(jobId)
-    if (!success) {
-      toast.error('Failed to pause job')
+  const createApiJobAction = useCallback((action: 'pause' | 'resume' | 'cancel' | 'rerun') => async (jobId: string) => {
+    const endpoint = action === 'rerun' ? `/api/jobs/${jobId}/rerun` : `/api/jobs/${jobId}/${action}`;
+    try {
+      const response = await fetch(endpoint, { method: 'POST' });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: `Failed to ${action} job` }));
+        throw new Error(errorData.error || `Server error ${action}ing job`);
+      }
+      toast.info(`Job ${jobId} ${action} request sent.`);
+      mutateJobs(); // Re-fetch job list to reflect status changes
+    } catch (error: any) {
+      toast.error(error.message || `Failed to ${action} job`);
     }
-  }
+  }, [mutateJobs]);
 
-  const handleResumeJob = async (jobId: string) => {
-    const success = await batchProcessor.resumeJob(jobId)
-    if (!success) {
-      toast.error('Failed to resume job')
-    }
-  }
+  const handlePauseJob = createApiJobAction('pause');
+  const handleResumeJob = createApiJobAction('resume');
+  const handleCancelJob = createApiJobAction('cancel');
+  const handleRetryJob = createApiJobAction('rerun'); // Assuming rerun API exists and works
 
-  const handleCancelJob = async (jobId: string) => {
-    const success = await batchProcessor.cancelJob(jobId)
-    if (!success) {
-      toast.error('Failed to cancel job')
-    }
-  }
+  const getStatusBadge = (status: ClientBatchJob['status']) => {
+    const variants: Record<ClientBatchJob['status'], { variant: 'default' | 'secondary' | 'destructive' | 'outline', icon: React.ElementType, text: string }> = {
+      pending: { variant: 'secondary', icon: ClockIcon, text: 'Pending' },
+      running: { variant: 'default', icon: PlayIcon, text: 'Running' }, 
+      paused: { variant: 'outline', icon: PauseIcon, text: 'Paused' },
+      completed: { variant: 'default', icon: CheckCircleIcon, text: 'Completed' }, // Changed 'success' to 'default'; consider custom styling if green is needed
+      failed: { variant: 'destructive', icon: XCircleIcon, text: 'Failed' },
+      cancelled: { variant: 'outline', icon: StopIcon, text: 'Cancelled' }, 
+      dead_letter: { variant: 'destructive', icon: ExclamationTriangleIcon, text: 'Dead Letter' }
+    };
 
-  // Get status badge
-  const getStatusBadge = (status: BatchJob['status']) => {
-    const variants = {
-      pending: { variant: 'secondary' as const, icon: ClockIcon, text: 'Pending' },
-      running: { variant: 'default' as const, icon: PlayIcon, text: 'Running' },
-      paused: { variant: 'outline' as const, icon: PauseIcon, text: 'Paused' },
-      completed: { variant: 'default' as const, icon: CheckCircleIcon, text: 'Completed' },
-      failed: { variant: 'destructive' as const, icon: XCircleIcon, text: 'Failed' },
-      cancelled: { variant: 'secondary' as const, icon: StopIcon, text: 'Cancelled' }
-    }
-
-    const config = variants[status]
-    const Icon = config.icon
+    const config = variants[status] || variants['pending']; // Fallback to pending if status is unknown
+    const Icon = config.icon;
 
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
+      <Badge variant={config.variant} className="flex items-center gap-1 whitespace-nowrap">
         <Icon className="h-3 w-3" />
         {config.text}
       </Badge>
-    )
-  }
-
-  // Get priority badge
-  const getPriorityBadge = (priority: BatchJob['priority']) => {
+    );
+  };
+  
+  const getPriorityBadge = (priority: ClientBatchJob['priority']) => {
     const variants = {
       low: 'secondary',
       medium: 'outline',
-      high: 'default',
+      high: 'default', // Using default for high
       urgent: 'destructive'
-    } as const
-
+    } as const;
     return (
       <Badge variant={variants[priority]} className="capitalize">
         {priority}
       </Badge>
-    )
-  }
+    );
+  };
 
-  // Filter jobs by tab
   const getFilteredJobs = () => {
+    if (!jobs) return [];
     switch (activeTab) {
       case 'active':
-        return jobs.filter(job => ['pending', 'running', 'paused'].includes(job.status))
+        return jobs.filter(job => ['pending', 'running', 'paused'].includes(job.status));
       case 'completed':
-        return jobs.filter(job => job.status === 'completed')
+        return jobs.filter(job => job.status === 'completed');
       case 'failed':
-        return jobs.filter(job => ['failed', 'cancelled'].includes(job.status))
+        return jobs.filter(job => ['failed', 'cancelled', 'dead_letter'].includes(job.status));
+      case 'all':
       default:
-        return jobs
+        return jobs;
     }
-  }
+  };
 
-  // Get estimated time remaining
-  const getEstimatedTimeRemaining = (job: BatchJob): string => {
-    if (job.status !== 'running' || job.progress.percentage === 0) {
-      return 'Unknown'
-    }
+  const displayedJobs = getFilteredJobs();
 
-    const elapsed = job.timestamps.started 
-      ? Date.now() - job.timestamps.started.getTime()
-      : 0
-    
-    const remaining = (elapsed / job.progress.percentage) * (100 - job.progress.percentage)
-    
-    if (remaining < 60000) {
-      return `${Math.round(remaining / 1000)}s`
-    } else if (remaining < 3600000) {
-      return `${Math.round(remaining / 60000)}m`
-    } else {
-      return `${Math.round(remaining / 3600000)}h`
+  const formatTimestamp = (isoString?: string | null) => {
+    if (!isoString) return 'N/A';
+    try {
+      return format(parseISO(isoString), 'MMM d, HH:mm:ss');
+    } catch (e) {
+      return 'Invalid Date';
     }
-  }
+  };
+  
+  const formatDuration = (start?: string | null, end?: string | null) => {
+    if (!start || !end) return 'N/A';
+    try {
+      return formatDistanceToNow(parseISO(start), { addSuffix: false }) + ' (ended)'; // This is not duration, but time since start
+      // A proper duration would be: formatDistance(parseISO(end), parseISO(start))
+    } catch (e) {
+      return 'Invalid Dates for Duration';
+    }
+  };
+
+
+  if (apiJobError) return <Alert variant="destructive"><AlertDescription>Error loading jobs: {apiJobError.message}</AlertDescription></Alert>;
+  // if (isLoadingJobs) return <p>Loading jobs dashboard...</p>; // SWR handles loading state internally often
 
   return (
     <div className="space-y-6">
       {/* Queue Status Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold">{queueStatus.pending}</p>
-              </div>
-              <QueueListIcon className="h-8 w-8 text-muted-foreground" />
-            </div>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Pending</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold">{queueStatus.pending}</div></CardContent>
         </Card>
-        
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Running</p>
-                <p className="text-2xl font-bold">{queueStatus.running}</p>
-              </div>
-              <CpuChipIcon className="h-8 w-8 text-muted-foreground" />
-            </div>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Running</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold">{queueStatus.running}</div></CardContent>
         </Card>
-        
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Capacity</p>
-                <p className="text-2xl font-bold">{queueStatus.running}/{queueStatus.maxConcurrent}</p>
-              </div>
-              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                <span className="text-xs font-medium">{Math.round((queueStatus.running / queueStatus.maxConcurrent) * 100)}%</span>
-              </div>
-            </div>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Capacity</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold">{queueStatus.running}/{queueStatus.maxConcurrent}</div></CardContent>
         </Card>
-        
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Jobs</p>
-                <p className="text-2xl font-bold">{queueStatus.totalJobs}</p>
-              </div>
-              <div className="flex items-center gap-1">
-                <Dialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" disabled={selectedProducts.length === 0}>
-                      New Job
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Create New Batch Job</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="job-type">Job Type</Label>
-                        <Select value={newJobType} onValueChange={(value: BatchJob['type']) => setNewJobType(value)}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="classification">Classification</SelectItem>
-                            <SelectItem value="fba_calculation">FBA Calculation</SelectItem>
-                            <SelectItem value="data_export">Data Export</SelectItem>
-                            <SelectItem value="data_import">Data Import</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="job-priority">Priority</Label>
-                        <Select value={newJobPriority} onValueChange={(value: BatchJob['priority']) => setNewJobPriority(value)}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="urgent">Urgent</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <Alert>
-                        <AlertDescription>
-                          This job will process {selectedProducts.length} selected products.
-                        </AlertDescription>
-                      </Alert>
-                      
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setIsCreateJobOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button onClick={handleCreateJob}>
-                          Create Job
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Total Jobs</CardTitle></CardHeader>
+          <CardContent className="flex items-center justify-between">
+            <div className="text-2xl font-bold">{totalJobsFromApi}</div>
+            <Dialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" disabled={selectedProducts.length === 0}>
+                  New Job
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Batch Job</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div>
+                    <Label htmlFor="job-type">Job Type</Label>
+                    <Select value={newJobType} onValueChange={(value) => setNewJobType(value as ClientBatchJob['type'])}>
+                      <SelectTrigger id="job-type"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="classification">Classification</SelectItem>
+                        <SelectItem value="fba_calculation">FBA Calculation</SelectItem>
+                        <SelectItem value="duty_optimization">Duty Optimization</SelectItem>
+                        <SelectItem value="data_export">Data Export</SelectItem>
+                        <SelectItem value="data_import">Data Import</SelectItem>
+                        <SelectItem value="scenario_analysis">Scenario Analysis</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="job-priority">Priority</Label>
+                    <Select value={newJobPriority} onValueChange={(value) => setNewJobPriority(value as ClientBatchJob['priority'])}>
+                      <SelectTrigger id="job-priority"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Alert>
+                    <AlertDescription>
+                      This job will process {selectedProducts.length} selected products.
+                      Ensure these products are relevant for the chosen job type.
+                    </AlertDescription>
+                  </Alert>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="outline" onClick={() => setIsCreateJobOpen(false)}>Cancel</Button>
+                    <Button onClick={handleCreateJob}>Create Job</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
       </div>
@@ -373,157 +315,99 @@ export default function BatchProcessingDashboard({
       <Card>
         <CardHeader>
           <CardTitle>Batch Jobs</CardTitle>
+          <CardDescription>Overview of background processing jobs. List refreshes automatically.</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-4 mb-4"> {/* Adjusted for 4 tabs */}
               <TabsTrigger value="active">Active ({jobs.filter(j => ['pending', 'running', 'paused'].includes(j.status)).length})</TabsTrigger>
               <TabsTrigger value="completed">Completed ({jobs.filter(j => j.status === 'completed').length})</TabsTrigger>
-              <TabsTrigger value="failed">Failed ({jobs.filter(j => ['failed', 'cancelled'].includes(j.status)).length})</TabsTrigger>
+              <TabsTrigger value="failed">Failed ({jobs.filter(j => ['failed', 'cancelled', 'dead_letter'].includes(j.status)).length})</TabsTrigger>
               <TabsTrigger value="all">All ({jobs.length})</TabsTrigger>
-              <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
+              {/* <TabsTrigger value="scheduler">Scheduler</TabsTrigger> Removed scheduler tab for now */}
             </TabsList>
             
-            <TabsContent value={activeTab} className="mt-4">
+            <TabsContent value={activeTab} className="mt-0"> {/* Removed mt-4 if TabsList has mb-4 */}
+              {isLoadingJobs && !apiJobData && <p>Loading jobs...</p>}
               <div className="space-y-4">
-                {getFilteredJobs().length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No jobs found
-                  </div>
+                {displayedJobs.length === 0 && !isLoadingJobs ? (
+                  <div className="text-center py-8 text-muted-foreground">No jobs in this category.</div>
                 ) : (
-                  getFilteredJobs().map(job => {
-                    const progressUpdate = progressUpdates.get(job.id)
-                    const currentProgress = progressUpdate?.progress || job.progress
-                    
+                  displayedJobs.map(job => {
+                    const detailedProgress = job.metadata?.progress || job.progress; // Use detailed if available
+                    const currentProgressPercentage = typeof detailedProgress === 'number' ? detailedProgress : detailedProgress.percentage;
+                    const completedItems = typeof detailedProgress === 'number' ? 'N/A' : detailedProgress.completed;
+                    const totalItems = typeof detailedProgress === 'number' ? 'N/A' : detailedProgress.total;
+                    const failedItems = typeof detailedProgress === 'number' ? 0 : detailedProgress.failed;
+                    const currentItem = typeof detailedProgress === 'object' ? detailedProgress.current : undefined;
+
                     return (
                       <Card key={job.id}>
                         <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-3">
                               <div>
-                                <h4 className="font-medium capitalize">{job.type.replace('_', ' ')}</h4>
-                                <p className="text-sm text-muted-foreground">ID: {job.id}</p>
+                                <h4 className="font-medium capitalize">{job.type.replace(/_/g, ' ')}</h4>
+                                <p className="text-xs text-muted-foreground break-all">ID: {job.id}</p>
                               </div>
                               {getStatusBadge(job.status)}
                               {getPriorityBadge(job.priority)}
                             </div>
-                            
-                            <div className="flex items-center gap-2">
-                              {job.status === 'running' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handlePauseJob(job.id)}
-                                >
-                                  <PauseIcon className="h-4 w-4" />
-                                </Button>
-                              )}
-                              
-                              {job.status === 'paused' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleResumeJob(job.id)}
-                                >
-                                  <PlayIcon className="h-4 w-4" />
-                                </Button>
-                              )}
-                              
-                              {['pending', 'running', 'paused'].includes(job.status) && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleCancelJob(job.id)}
-                                >
-                                  <StopIcon className="h-4 w-4" />
-                                </Button>
-                              )}
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {job.status === 'running' && <Button size="sm" variant="outline" onClick={() => handlePauseJob(job.id)}><PauseIcon className="h-4 w-4" /></Button>}
+                              {job.status === 'paused' && <Button size="sm" variant="outline" onClick={() => handleResumeJob(job.id)}><PlayIcon className="h-4 w-4" /></Button>}
+                              {['pending', 'running', 'paused'].includes(job.status) && <Button size="sm" variant="outline" onClick={() => handleCancelJob(job.id)}><StopIcon className="h-4 w-4" /></Button>}
+                              {(job.status === 'failed' || job.status === 'dead_letter') && <Button size="sm" variant="outline" onClick={() => handleRetryJob(job.id)}><PlayIcon className="h-4 w-4 mr-1" />Retry</Button>}
                             </div>
                           </div>
                           
-                          {/* Progress Bar */}
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
+                          <div className="space-y-1 my-2">
+                            <div className="flex justify-between text-xs text-muted-foreground">
                               <span>
-                                {currentProgress.completed} / {currentProgress.total} completed
-                                {currentProgress.failed > 0 && (
-                                  <span className="text-destructive ml-2">({currentProgress.failed} failed)</span>
-                                )}
+                                Progress: {completedItems}/{totalItems}
+                                {failedItems > 0 && <span className="text-destructive ml-1">({failedItems} failed)</span>}
                               </span>
-                              <span>{currentProgress.percentage}%</span>
+                              <span>{currentProgressPercentage}%</span>
                             </div>
-                            <Progress value={currentProgress.percentage} className="h-2" />
+                            <Progress value={currentProgressPercentage} className="h-2" />
                           </div>
                           
-                          {/* Job Details */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">Created</p>
-                              <p>{format(job.timestamps.created, 'MMM d, HH:mm')}</p>
-                            </div>
-                            
-                            {job.timestamps.started && (
-                              <div>
-                                <p className="text-muted-foreground">Started</p>
-                                <p>{format(job.timestamps.started, 'MMM d, HH:mm')}</p>
-                              </div>
-                            )}
-                            
-                            {job.status === 'running' && (
-                              <div>
-                                <p className="text-muted-foreground">ETA</p>
-                                <p>{getEstimatedTimeRemaining(job)}</p>
-                              </div>
-                            )}
-                            
-                            {job.timestamps.completed && (
-                              <div>
-                                <p className="text-muted-foreground">Duration</p>
-                                <p>
-                                  {formatDistanceToNow(job.timestamps.started || job.timestamps.created, {
-                                    addSuffix: false
-                                  })}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Current Item */}
-                          {job.status === 'running' && currentProgress.current && (
-                            <div className="mt-3 p-2 bg-muted rounded text-sm">
-                              <p className="text-muted-foreground">Currently processing:</p>
-                              <p className="font-mono">{currentProgress.current}</p>
-                            </div>
+                          {job.status === 'running' && currentItem && (
+                            <p className="text-xs text-muted-foreground mt-1 truncate" title={currentItem}>Processing: {currentItem}</p>
                           )}
                           
-                          {/* Error Details */}
-                          {job.error && (
-                            <Alert className="mt-3">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 mt-2 text-xs border-t pt-2">
+                            <div><span className="text-muted-foreground">Created:</span> {formatTimestamp(job.created_at)}</div>
+                            {job.started_at && <div><span className="text-muted-foreground">Started:</span> {formatTimestamp(job.started_at)}</div>}
+                            {job.completed_at && <div><span className="text-muted-foreground">Completed:</span> {formatTimestamp(job.completed_at)}</div>}
+                            {/* {job.completed_at && job.started_at && <div><span className="text-muted-foreground">Duration:</span> {formatDuration(job.started_at, job.completed_at)}</div>} */}
+                          </div>
+                          
+                          {(job.error || job.metadata?.error?.message) && (
+                            <Alert variant="destructive" className="mt-3 text-xs">
                               <ExclamationTriangleIcon className="h-4 w-4" />
                               <AlertDescription>
-                                <strong>Error:</strong> {job.error.message}
-                                {job.metadata.retryCount && (
-                                  <span className="ml-2">
-                                    (Retry {job.metadata.retryCount}/{job.metadata.maxRetries})
-                                  </span>
+                                {job.error || job.metadata?.error?.message}
+                                {job.metadata?.retryCount !== undefined && job.metadata?.maxRetries !== undefined && (
+                                  <span className="ml-2">(Retry {job.metadata.retryCount}/{job.metadata.maxRetries})</span>
                                 )}
                               </AlertDescription>
                             </Alert>
                           )}
                         </CardContent>
                       </Card>
-                    )
+                    );
                   })
                 )}
               </div>
             </TabsContent>
             
             <TabsContent value="scheduler">
-              <BatchScheduler />
+              <BatchScheduler /> {/* Ensure BatchScheduler is also refactored if it uses batchProcessor */}
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

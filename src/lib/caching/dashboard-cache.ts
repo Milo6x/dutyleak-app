@@ -82,11 +82,13 @@ class DashboardCache {
 const dashboardCache = new DashboardCache()
 
 // Clean up expired entries every 10 minutes
-if (typeof window !== 'undefined') {
-  setInterval(() => {
-    dashboardCache.cleanup()
-  }, 10 * 60 * 1000)
-}
+// Removed 'if (typeof window !== "undefined")' to allow this to run server-side as well,
+// assuming a long-lived server process where setInterval is meaningful.
+// For serverless functions, cleanup-on-access remains the primary mechanism.
+setInterval(() => {
+  dashboardCache.cleanup()
+  // console.log('Dashboard cache cleanup executed.'); // Optional: for debugging
+}, 10 * 60 * 1000)
 
 export default dashboardCache
 

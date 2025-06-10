@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
 
     // Get workspace access and check permissions
     const { user, workspace_id } = await getWorkspaceAccess(supabase)
+    // For GET, DATA_VIEW is appropriate.
     await checkUserPermission(user.id, workspace_id, 'DATA_VIEW')
 
     // Get query parameters
@@ -34,7 +35,17 @@ export async function GET(request: NextRequest) {
         reviewer_notes,
         status,
         updated_at,
-        workspace_id
+        workspace_id,
+        type, 
+        priority,
+        title, 
+        description, 
+        assigned_to,
+        assigned_at,
+        due_date,
+        metadata, 
+        products (id, title, asin, category, description),
+        classifications (id, hs6, hs8, description, confidence_score, source)
       `)
       .eq('workspace_id', workspace_id)
       .order('created_at', { ascending: false })
@@ -44,36 +55,72 @@ export async function GET(request: NextRequest) {
     if (status) {
       query = query.eq('status', status)
     }
+    if (priority) {
+      // Assuming 'priority' column exists in 'review_queue' table
+      query = query.eq('priority', priority) 
+    }
+    if (type) {
+      // Assuming 'type' column exists in 'review_queue' table
+      query = query.eq('type', type)
+    }
 
-    const { data: reviewItems, error: reviewError } = await query
+    const { data: reviewItems, error: reviewError, count: totalCount } = await query
 
     if (reviewError) {
       console.error('Review queue fetch error:', reviewError)
       return NextResponse.json({ error: 'Failed to fetch review queue' }, { status: 500 })
     }
 
-    // Return review items without comments for now
-    const itemsWithComments = (reviewItems || []).map((item) => ({
-      ...item,
-      comments: []
-    }))
+    // Return review items, comments are assumed to be part of 'metadata' or a separate field if schema changes
+    // For now, if comments are in metadata, they'd be part of the item.
+    // If 'comments' is a dedicated JSONB field, it should be in the select string.
+    // Assuming 'metadata' might contain 'currentValue', 'suggestedValue', 'impact' etc.
+    // The ReviewItem interface in UI expects 'products' and 'classifications' as nested objects.
+    // The ReviewItem interface in UI expects 'products' and 'classifications' as nested objects.
+    const processedItems = (reviewItems || []).map(item => {
+      // Type assertion for item to help TypeScript understand its structure,
+      // especially for joined tables and JSONB columns.
+      const typedItem = item as any; // Using 'any' for simplicity here, ideally a more specific type.
 
-    // Get summary statistics
-    const { data: stats } = await supabase
+      const productData = typedItem.products && typeof typedItem.products === 'object' && !Array.isArray(typedItem.products)
+        ? typedItem.products
+        : null;
+      const classificationData = typedItem.classifications && typeof typedItem.classifications === 'object' && !Array.isArray(typedItem.classifications)
+        ? typedItem.classifications
+        : null;
+      
+      const metadata = typedItem.metadata as { comments?: any[], [key: string]: any } | null;
+
+      return {
+        ...typedItem, // Spread the item, assuming it's an object
+        products: productData,
+        classifications: classificationData,
+        comments: metadata?.comments || []
+      };
+    });
+
+    // Get summary statistics (consider if this needs to be filtered too, or is global for workspace)
+    // For now, keeping summary global for the workspace as before.
+    const { data: statsDataForSummary, error: summaryStatsError } = await supabase
       .from('review_queue')
-      .select('status')
+      .select('status, priority, type') // Select all fields needed for summary
       .eq('workspace_id', workspace_id)
 
-    const summary = calculateQueueSummary(stats || [])
+    if (summaryStatsError) {
+        console.error('Error fetching summary stats for review queue:', summaryStatsError);
+        // Proceed without summary or return error, for now proceed
+    }
+    
+    const summary = calculateQueueSummary(statsDataForSummary || [])
 
     return NextResponse.json({
       success: true,
-      items: itemsWithComments,
+      items: processedItems,
       summary,
       pagination: {
         limit,
         offset,
-        total: itemsWithComments.length
+        total: totalCount || 0 // Use the count from the query
       }
     })
 
@@ -92,8 +139,10 @@ export async function POST(request: NextRequest) {
     const supabase = createDutyLeakServerClient()
 
     // Get workspace access and check permissions
+    // For POST (creating a review item), DATA_CREATE or a more specific review permission is appropriate.
+    // Using DATA_CREATE as a general permission that implies ability to create review-worthy items.
     const { user, workspace_id } = await getWorkspaceAccess(supabase)
-    await checkUserPermission(user.id, workspace_id, 'DATA_VIEW')
+    await checkUserPermission(user.id, workspace_id, 'DATA_CREATE') 
 
     const body = await request.json()
     const {
@@ -107,13 +156,15 @@ export async function POST(request: NextRequest) {
       suggestedValue,
       confidence,
       impact,
-      metadata = {}
+      metadata = {},
+      classificationId // Added classificationId to destructure
     } = body
 
     // Validate required fields
-    if (!type || !title || !description) {
+    // classificationId is now also important if it's a classification review type
+    if (!type || !title || !description || (type === 'classification' && !classificationId)) {
       return NextResponse.json(
-        { error: 'Missing required fields: type, title, description' },
+        { error: 'Missing required fields: type, title, description. Classification ID is required for classification reviews.' },
         { status: 400 }
       )
     }
@@ -122,14 +173,29 @@ export async function POST(request: NextRequest) {
     const { data: newItem, error: insertError } = await supabase
       .from('review_queue')
       .insert({
-        classification_id: 'temp-classification-id', // This should be a real classification ID
+        classification_id: classificationId || null, // Use provided classificationId or null
         product_id: productId,
         workspace_id: workspace_id,
         status: 'pending',
         confidence_score: confidence,
-        reason: description || 'Review requested'
+        reason: description || 'Review requested',
+        type, // Store type
+        priority, // Store priority
+        title, // Store title (if different from product title)
+        description: description || 'Review requested', // Use main description as reason if no specific reason
+        metadata: { // Store other relevant details in metadata
+            productName, 
+            currentValue, 
+            suggestedValue, 
+            impact, 
+            ...(metadata || {}) // Merge with any existing metadata passed
+        }
       })
-      .select()
+      .select(`
+        *, 
+        products (id, title, asin, category, description), 
+        classifications (id, hs6, hs8, description, confidence_score, source)
+      `)
       .single()
 
     if (insertError) {
@@ -139,13 +205,26 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+    
+    // newItem is the result of .insert().select(...).single()
+    // Explicitly cast to 'any' to bypass strict type checking for nested/JSON properties if TS struggles
+    const typedNewItem = newItem as any;
+
+    const processedNewItem = {
+      ...typedNewItem,
+      products: typedNewItem.products && typeof typedNewItem.products === 'object' && !Array.isArray(typedNewItem.products)
+        ? typedNewItem.products
+        : null,
+      classifications: typedNewItem.classifications && typeof typedNewItem.classifications === 'object' && !Array.isArray(typedNewItem.classifications)
+        ? typedNewItem.classifications
+        : null,
+      // Access metadata safely, assuming it might contain a comments array
+      comments: (typedNewItem.metadata as { comments?: any[] })?.comments || []
+    };
 
     return NextResponse.json({
       success: true,
-      item: {
-        ...newItem,
-        comments: []
-      }
+      item: processedNewItem
     })
 
   } catch (error) {
@@ -163,11 +242,12 @@ export async function PATCH(request: NextRequest) {
     const supabase = createDutyLeakServerClient()
 
     // Get workspace access and check permissions
+    // For PATCH (updating a review item), DATA_UPDATE or a specific review permission is appropriate.
     const { user, workspace_id } = await getWorkspaceAccess(supabase)
-    await checkUserPermission(user.id, workspace_id, 'DATA_VIEW')
+    await checkUserPermission(user.id, workspace_id, 'DATA_UPDATE') 
 
     const body = await request.json()
-    const { id, status, reviewedBy, metadata } = body
+    const { id, status, reviewedBy, metadata, newHsCode, newHsDescription, newConfidence } = body // Added fields for override
 
     if (!id || !status) {
       return NextResponse.json(
@@ -176,15 +256,76 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Update review item
-    const updateData: any = {
-      status
+    // Fetch the review item to get classification_id
+    const { data: reviewItem, error: fetchError } = await supabase
+      .from('review_queue')
+      .select('classification_id, product_id')
+      .eq('id', id)
+      .eq('workspace_id', workspace_id)
+      .single()
+
+    if (fetchError || !reviewItem) {
+      return NextResponse.json({ error: 'Review item not found' }, { status: 404 })
     }
 
-    if (status === 'approved' || status === 'rejected') {
-      updateData.reviewed_at = new Date().toISOString()
-      updateData.reviewer_notes = reviewedBy || user.email
+    // Update review item
+    const updateData: any = {
+      status,
+      reviewed_at: new Date().toISOString(),
+      reviewer_notes: reviewedBy || user.email, // Store who reviewed it
     }
+    if (metadata) {
+        updateData.metadata = metadata; // Store any additional metadata from review
+    }
+
+
+    // If status is 'approved' and new HS code details are provided (override)
+    // Or if status is 'rejected' but a correction is provided
+    if ((status === 'approved' || status === 'rejected') && newHsCode && reviewItem.classification_id) {
+      const { error: classificationUpdateError } = await supabase
+        .from('classifications')
+        .update({
+          hs_code: newHsCode, // Assuming newHsCode is the full code
+          hs6: newHsCode.substring(0, 6),
+          hs8: newHsCode.length >= 8 ? newHsCode.substring(0, 8) : null,
+          description: newHsDescription || null, // Description for the new code
+          confidence_score: newConfidence || 1.0, // Confidence for manual override is typically high
+          source: 'manual_review',
+          is_active: true, // Make this the active classification
+          // Potentially mark previous active classification for this product_id as inactive
+        })
+        .eq('id', reviewItem.classification_id)
+        .eq('workspace_id', workspace_id); // Ensure workspace scope
+
+      if (classificationUpdateError) {
+        console.error('Error updating classification record:', classificationUpdateError);
+        // Decide if this should be a hard fail or just a warning
+        // For now, we'll proceed with updating the review queue item status but log this error.
+        updateData.reviewer_notes = `${updateData.reviewer_notes || ''} (Failed to update main classification: ${classificationUpdateError.message})`;
+      } else {
+         // Optionally, deactivate other classifications for the same product_id
+         await supabase
+           .from('classifications')
+           .update({ is_active: false })
+           .eq('product_id', reviewItem.product_id)
+           .neq('id', reviewItem.classification_id); // Don't deactivate the one just updated
+      }
+    } else if (status === 'approved' && reviewItem.classification_id) {
+        // Mark the existing classification as human-verified and active
+        await supabase
+            .from('classifications')
+            .update({ is_human_verified: true, is_active: true, source: 'manual_review_approved' })
+            .eq('id', reviewItem.classification_id)
+            .eq('workspace_id', workspace_id);
+        
+        // Optionally, deactivate other classifications for the same product_id
+         await supabase
+           .from('classifications')
+           .update({ is_active: false })
+           .eq('product_id', reviewItem.product_id)
+           .neq('id', reviewItem.classification_id);
+    }
+
 
     const { data: updatedItem, error: updateError } = await supabase
       .from('review_queue')
@@ -204,8 +345,8 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      item: updatedItem,
-      comments: []
+      item: updatedItem, // Assuming updatedItem structure matches what UI expects or UI adapts
+      // comments: [] // Comments still not implemented here, would be part of updatedItem if in metadata
     })
 
   } catch (error) {

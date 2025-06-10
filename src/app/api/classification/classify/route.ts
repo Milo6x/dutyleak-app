@@ -16,8 +16,9 @@ interface ClassificationRequest {
   additionalContext?: string
   existingHsCode?: string
   productCategory?: string
+  productId?: string // Added productId
   batch?: boolean
-  products?: ClassificationRequest[]
+  products?: ClassificationRequest[] // products in batch should also ideally have productId
   useEnhanced?: boolean // Flag to use enhanced classifier
 }
 
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
       additionalContext,
       existingHsCode,
       productCategory,
+      productId, // Added productId
       batch, 
       products,
       useEnhanced = true // Default to enhanced classifier
@@ -256,6 +258,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               user_id: user.id,
               workspace_id: workspace_id,
+              product_id: productId, // Log productId
               product_description: productDescription,
               hs_code: result.hsCode,
               confidence: result.confidence,
@@ -283,24 +286,6 @@ export async function POST(request: NextRequest) {
       { success: false, error: 'Internal server error' },
       { status: 500 }
     )
-  }
-}
-
-/**
- * Log classification for analytics and usage tracking
- */
-async function logClassification(supabase: any, userId: string, data: any) {
-  try {
-    await supabase
-      .from('job_logs')
-      .insert({
-        user_id: userId,
-        classification_data: data,
-        created_at: new Date().toISOString()
-      })
-  } catch (error) {
-    console.error('Failed to log classification:', error)
-    // Don't throw error as this is non-critical
   }
 }
 

@@ -1,13 +1,16 @@
 import { SupabaseClient } from '@supabase/supabase-js'
-import { createBrowserClient } from '../supabase'
+// import { createBrowserClient } from '../supabase' // Replaced with admin client
+import { createDutyLeakAdminClient } from '../supabase/server'; // Import admin client
 import { ClassificationEngine } from '../duty/classification-engine'
 import { FbaFeeCalculator } from '../amazon/fba-fee-calculator'
+import { OptimizationEngine } from '../duty/optimization-engine'; // Added
+import { ScenarioEngine } from '../duty/scenario-engine';   // Added
 import { EventEmitter } from 'events'
 
 export interface BatchJob {
   id: string
-  type: 'classification' | 'fba_calculation' | 'data_export' | 'data_import'
-  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
+  type: 'classification' | 'fba_calculation' | 'data_export' | 'data_import' | 'duty_optimization' | 'scenario_analysis'
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'dead_letter'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   progress: {
     total: number
@@ -60,22 +63,79 @@ export class AdvancedBatchProcessor extends EventEmitter {
   private jobs: Map<string, BatchJob> = new Map()
   private runningJobs: Set<string> = new Set()
   private queue: string[] = []
-  private supabase = createBrowserClient()
+  private supabaseAdmin: SupabaseClient // Changed to SupabaseClient type
   private config: BatchProcessorConfig
   private isProcessing = false
   private abortControllers: Map<string, AbortController> = new Map()
 
   constructor(config?: Partial<BatchProcessorConfig>) {
     super()
-    this.config = {
+    this.supabaseAdmin = createDutyLeakAdminClient(); // Initialize with admin client
+
+    const defaultConfig: BatchProcessorConfig = {
       maxConcurrentJobs: 3,
       retryAttempts: 3,
-      retryDelay: 1000,
+      retryDelay: 1000, // ms
       batchSize: 10,
-      progressUpdateInterval: 500,
+      progressUpdateInterval: 500, // ms
       enablePersistence: true,
-      ...config
-    }
+    };
+
+    const getConfigValue = <K extends keyof BatchProcessorConfig>(
+      key: K,
+      envVarName: string,
+      parser: (val: string) => BatchProcessorConfig[K] | undefined, // Allow parser to return undefined if parsing fails
+      defaultValue: BatchProcessorConfig[K]
+    ): BatchProcessorConfig[K] => {
+      const constructorVal = config?.[key];
+      if (constructorVal !== undefined) {
+        return constructorVal;
+      }
+      const envVal = process.env[envVarName];
+      if (envVal !== undefined) {
+        try {
+          const parsed = parser(envVal);
+          if (parsed !== undefined) return parsed;
+          console.warn(`Failed to parse env var ${envVarName} ('${envVal}'). Using default for ${String(key)}.`);
+          return defaultValue;
+        } catch (e) {
+          console.warn(`Error parsing env var ${envVarName} ('${envVal}'). Using default for ${String(key)}. Error: ${e}`);
+          return defaultValue;
+        }
+      }
+      return defaultValue;
+    };
+    
+    const parseEnvInt = (val: string): number | undefined => {
+        const num = parseInt(val, 10);
+        return isNaN(num) ? undefined : num;
+    };
+
+    const parseEnvBoolean = (val: string): boolean | undefined => {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+        return undefined;
+    };
+
+    this.config = {
+      maxConcurrentJobs: getConfigValue('maxConcurrentJobs', 'JOB_MAX_CONCURRENT', parseEnvInt, defaultConfig.maxConcurrentJobs),
+      retryAttempts: getConfigValue('retryAttempts', 'JOB_RETRY_ATTEMPTS', parseEnvInt, defaultConfig.retryAttempts),
+      retryDelay: getConfigValue('retryDelay', 'JOB_RETRY_DELAY_MS', parseEnvInt, defaultConfig.retryDelay),
+      batchSize: getConfigValue('batchSize', 'JOB_BATCH_SIZE', parseEnvInt, defaultConfig.batchSize),
+      progressUpdateInterval: getConfigValue('progressUpdateInterval', 'JOB_PROGRESS_INTERVAL_MS', parseEnvInt, defaultConfig.progressUpdateInterval),
+      enablePersistence: getConfigValue('enablePersistence', 'JOB_ENABLE_PERSISTENCE', parseEnvBoolean, defaultConfig.enablePersistence),
+    };
+    
+    // If config was passed to constructor, it should override env vars and defaults.
+    // The getConfigValue handles this precedence. The final ...config is not needed if each key is handled.
+    // However, if BatchProcessorConfig could have more fields than explicitly handled by getConfigValue,
+    // and we want to allow them through constructor, then a final merge is needed.
+    // For now, assuming BatchProcessorConfig only has the fields handled by getConfigValue.
+    // If config object from constructor has properties not defined in BatchProcessorConfig, they will be ignored.
+    // If BatchProcessorConfig has more properties than handled by getConfigValue, they will take default.
+    // To ensure all constructor overrides are respected for all BatchProcessorConfig fields:
+    // this.config = { ...this.config, ...config }; // This would apply constructor config last.
+    // But getConfigValue already prioritizes constructor config.
 
     // Load persisted jobs on initialization
     if (this.config.enablePersistence) {
@@ -309,8 +369,16 @@ export class AdvancedBatchProcessor extends EventEmitter {
         case 'data_import':
           await this.processDataImportJob(job, abortController.signal)
           break
+        case 'duty_optimization':
+          await this.processDutyOptimizationJob(job, abortController.signal)
+          break
+        case 'scenario_analysis':
+          await this.processScenarioAnalysisJob(job, abortController.signal)
+          break
         default:
-          throw new Error(`Unknown job type: ${job.type}`)
+          // Ensure exhaustive check with a helper or by explicitly casting job.type
+          const exhaustiveCheck: never = job.type;
+          throw new Error(`Unhandled job type: ${exhaustiveCheck}`);
       }
 
       if (!abortController.signal.aborted) {
@@ -357,7 +425,7 @@ export class AdvancedBatchProcessor extends EventEmitter {
       
       try {
         // Get product details
-        const { data: products, error } = await this.supabase
+        const { data: products, error } = await this.supabaseAdmin
           .from('products')
           .select('id, title, description, workspace_id')
           .in('id', batch)
@@ -376,10 +444,10 @@ export class AdvancedBatchProcessor extends EventEmitter {
               productId: product.id,
               productName: product.title,
               productDescription: product.description || ''
-            }, this.supabase)
+            }, this.supabaseAdmin) // Pass admin client
             
             // Save classification result
-            await this.supabase
+            await this.supabaseAdmin
               .from('classifications')
               .insert({
                 product_id: product.id,
@@ -424,7 +492,7 @@ export class AdvancedBatchProcessor extends EventEmitter {
       const batch = productIds.slice(i, i + batchSize)
       
       try {
-        const { data: products, error } = await this.supabase
+        const { data: products, error } = await this.supabaseAdmin
           .from('products')
           .select('id, asin, weight, category')
           .in('id', batch)
@@ -448,7 +516,7 @@ export class AdvancedBatchProcessor extends EventEmitter {
             //   })
             // }
             
-            // await this.supabase
+            // await this.supabaseAdmin  // Use admin client
             //   .from('products')
             //   .update({
             //     fba_fee_estimate_usd: fbaResult.fbaFee,
@@ -493,6 +561,149 @@ export class AdvancedBatchProcessor extends EventEmitter {
   }
 
   /**
+   * Process duty optimization job
+   */
+  private async processDutyOptimizationJob(job: BatchJob, signal: AbortSignal): Promise<void> {
+    const { productIds, parameters, workspaceId } = job.metadata;
+    const jobParams = parameters || {}; // Ensure parameters is an object
+
+    if (!productIds || !Array.isArray(productIds)) {
+      throw new Error('Product IDs are required for duty optimization job');
+    }
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required in job metadata for duty optimization');
+    }
+
+    // Pass engine options if provided in job.metadata.parameters.engineOptions
+    const optimizationEngine = new OptimizationEngine(jobParams.engineOptions);
+    const savingsToInsert: any[] = [];
+    job.progress.total = productIds.length; // Ensure total is set if not already
+
+    for (let i = 0; i < productIds.length; i++) {
+      if (signal.aborted) {
+        console.log(`Duty optimization job ${job.id} aborted during product loop.`);
+        throw new Error('Job aborted');
+      }
+      const productId = productIds[i];
+      job.progress.current = productId;
+      
+      try {
+        const recommendations = await optimizationEngine.generateRecommendations([productId]);
+        for (const recommendation of recommendations) {
+          savingsToInsert.push({
+            product_id: recommendation.productId,
+            workspace_id: workspaceId,
+            savings_amount: recommendation.potentialSaving || 0,
+            savings_percentage: recommendation.savingPercentage || 0, 
+            baseline_duty_rate: recommendation.currentDutyRate || 0,
+            optimized_duty_rate: recommendation.recommendedDutyRate || 0,
+            calculation_id: `opt_job_${job.id}_${productId}` // More specific ID
+          });
+        }
+        job.progress.completed++;
+      } catch (error) {
+        console.error(`Error generating recommendations for product ${productId} in job ${job.id}:`, error);
+        job.progress.failed++;
+      }
+      
+      // Update progress (throttled inside updateProgress if necessary, or here)
+      if (i % Math.max(1, Math.floor(job.progress.total / 20)) === 0 || i === job.progress.total - 1) {
+        this.updateProgress(job); // Update progress state
+        if (this.config.enablePersistence) await this.persistJob(job); // Persist progress
+      }
+    }
+
+    if (signal.aborted) return;
+
+    if (savingsToInsert.length > 0) {
+      const { error: optimizationInsertError } = await this.supabaseAdmin
+        .from('savings_ledger')
+        .insert(savingsToInsert);
+
+      if (optimizationInsertError) {
+        // This error will be caught by the main job error handler
+        throw new Error(`Failed to save batch optimization results: ${optimizationInsertError.message}`);
+      }
+    }
+    job.progress.percentage = 100; // Ensure it's 100 if all items processed
+    this.updateProgress(job);
+  }
+
+  /**
+   * Process scenario analysis job
+   */
+  private async processScenarioAnalysisJob(job: BatchJob, signal: AbortSignal): Promise<void> {
+    const { parameters, workspaceId } = job.metadata;
+    const scenarioParams = parameters?.scenarioParams; // Assuming scenarioParams are nested
+
+    if (!scenarioParams) {
+      throw new Error('Scenario parameters are required for scenario analysis job');
+    }
+    if (!workspaceId) {
+        throw new Error('Workspace ID is required in job metadata for scenario analysis');
+    }
+    // Ensure scenarioParams includes workspaceId if ScenarioEngine needs it directly
+    if (!scenarioParams.workspaceId) {
+        scenarioParams.workspaceId = workspaceId;
+    }
+
+
+    const scenarioEngine = new ScenarioEngine();
+    job.progress.total = 1; // Scenario analysis is typically a single operation
+
+    job.progress.current = 'Analyzing scenario';
+    this.updateProgress(job);
+    if (this.config.enablePersistence) await this.persistJob(job);
+    
+    const result = await scenarioEngine.compareClassifications(scenarioParams, this.supabaseAdmin); // Use admin client
+
+    if (signal.aborted) {
+      console.log(`Scenario analysis job ${job.id} aborted.`);
+      throw new Error('Job aborted');
+    }
+    
+    // Save scenario analysis result to duty_scenarios table
+    const { error: scenarioError } = await this.supabaseAdmin // Use admin client
+      .from('duty_scenarios')
+      .insert({
+        // workspace_id: scenarioParams.workspaceId, // Already part of scenarioParams or added above
+        name: scenarioParams.name || `Job Analysis ${job.id}`,
+        description: scenarioParams.description || `Automated scenario analysis from job ${job.id}`,
+        base_classification_id: scenarioParams.baseClassificationId,
+        alternative_classification_id: scenarioParams.alternativeClassificationId,
+        destination_country: scenarioParams.destinationCountry,
+        product_value: scenarioParams.productValue,
+        shipping_cost: scenarioParams.shippingCost,
+        insurance_cost: scenarioParams.insuranceCost,
+        fba_fee_amount: scenarioParams.fbaFeeAmount,
+        yearly_units: scenarioParams.yearlyUnits,
+        base_duty_amount: result.baseDutyAmount,
+        alternative_duty_amount: result.alternativeDutyAmount,
+        potential_saving: result.potentialSaving,
+        status: 'completed', // Status of the scenario record itself
+        parameters: scenarioParams, // Store original params within the scenario record
+        workspace_id: workspaceId // Ensure this is set from job metadata
+      });
+
+    if (scenarioError) {
+      throw new Error(`Failed to save scenario analysis result: ${scenarioError.message}`);
+    }
+
+    // Update job metadata with a summary or reference to the created scenario
+    if (job.metadata.parameters) {
+        job.metadata.parameters.analysisResultSummary = { 
+            potentialSaving: result.potentialSaving,
+            baseDuty: result.baseDutyAmount,
+            altDuty: result.alternativeDutyAmount
+        };
+    }
+    
+    job.progress.completed = 1;
+    job.progress.percentage = 100;
+    this.updateProgress(job);
+  }
+
+  /**
    * Update job progress and emit events
    */
   private updateProgress(job: BatchJob): void {
@@ -526,9 +737,9 @@ export class AdvancedBatchProcessor extends EventEmitter {
       
       this.emit('jobRetry', { job, attempt: job.metadata.retryCount })
     } else {
-      // Mark as failed
-      job.status = 'failed'
-      job.timestamps.completed = new Date()
+      // Mark as dead_letter after exhausting retries
+      job.status = 'dead_letter'
+      job.timestamps.completed = new Date() // Mark as completed in terms of processing attempts
       job.error = {
         message: error.message,
         code: error.name,
@@ -578,7 +789,7 @@ export class AdvancedBatchProcessor extends EventEmitter {
    */
   private async persistJob(job: BatchJob): Promise<void> {
     try {
-      const { error } = await this.supabase
+      const { error } = await this.supabaseAdmin // Use admin client
         .from('jobs')
         .insert({
           id: job.id,
@@ -617,7 +828,7 @@ export class AdvancedBatchProcessor extends EventEmitter {
    */
   private async loadPersistedJobs(): Promise<void> {
     try {
-      const { data: jobs, error } = await this.supabase
+      const { data: jobs, error } = await this.supabaseAdmin // Use admin client
         .from('jobs')
         .select('*')
         .in('status', ['pending', 'running', 'paused'])
@@ -632,9 +843,9 @@ export class AdvancedBatchProcessor extends EventEmitter {
         const job: BatchJob = {
           id: jobData.id,
           type: jobData.type as 'classification' | 'fba_calculation' | 'data_export' | 'data_import',
-          status: (jobData.status === 'running' ? 'pending' : jobData.status) as 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled', // Reset running jobs to pending
-          priority: (jobData.parameters && typeof jobData.parameters === 'object' && !Array.isArray(jobData.parameters) && 'priority' in jobData.parameters ? jobData.parameters.priority : 'medium') as 'low' | 'medium' | 'high' | 'urgent',
-          progress: (jobData.parameters && typeof jobData.parameters === 'object' && !Array.isArray(jobData.parameters) && 'progress' in jobData.parameters ? jobData.parameters.progress : { total: 0, completed: 0, failed: 0, percentage: 0 }) as { total: number; completed: number; failed: number; current?: string; percentage: number; },
+          status: (jobData.status === 'running' ? 'pending' : jobData.status) as BatchJob['status'], // Reset running jobs to pending, use BatchJob['status']
+          priority: (jobData.parameters && typeof jobData.parameters === 'object' && !Array.isArray(jobData.parameters) && 'priority' in jobData.parameters ? jobData.parameters.priority : 'medium') as BatchJob['priority'],
+          progress: (jobData.parameters && typeof jobData.parameters === 'object' && !Array.isArray(jobData.parameters) && 'progress' in jobData.parameters ? jobData.parameters.progress : { total: 0, completed: 0, failed: 0, percentage: 0 }) as BatchJob['progress'],
           metadata: jobData.parameters && typeof jobData.parameters === 'object' && !Array.isArray(jobData.parameters)
             ? jobData.parameters as { productIds?: string[]; parameters?: any; retryCount?: number; maxRetries?: number; estimatedDuration?: number; actualDuration?: number; workspaceId?: string; }
             : {},

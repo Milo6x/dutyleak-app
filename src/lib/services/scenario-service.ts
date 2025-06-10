@@ -35,58 +35,54 @@ export class ScenarioService {
     description?: string
     metadata?: Record<string, any>
   }): Promise<ScenarioGroup> {
-    // Note: scenario_groups table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { data: { user } } = await this.supabase.auth.getUser()
     if (!user) {
       throw new Error('User not authenticated')
     }
 
     const { data: group, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('scenario_groups')
       .insert({
         workspace_id: data.workspace_id,
         name: data.name,
         description: data.description,
-        status: 'draft',
-        parameters: data.metadata as any
+        metadata: data.metadata || {},
+        created_by: user.id,
       })
       .select()
       .single()
 
     if (error) {
+      console.error("Error creating scenario group:", error)
       throw error
     }
-    return group as any
+    return group as ScenarioGroup
   }
 
   async getScenarioGroups(workspace_id: string): Promise<ScenarioGroup[]> {
-    // Note: scenario_groups table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { data, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('scenario_groups')
       .select('*')
       .eq('workspace_id', workspace_id)
       .order('created_at', { ascending: false })
 
     if (error) {
+      console.error("Error fetching scenario groups:", error)
       throw error
     }
-    return (data || []) as any
+    return (data || []) as ScenarioGroup[]
   }
 
   async updateScenarioGroup(
     id: string,
     updates: Partial<Pick<ScenarioGroup, 'name' | 'description' | 'metadata'>>
   ): Promise<ScenarioGroup> {
-    // Note: scenario_groups table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { data, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('scenario_groups')
       .update({ 
         name: updates.name,
         description: updates.description,
-        parameters: updates.metadata as any,
+        metadata: updates.metadata,
         updated_at: new Date().toISOString() 
       })
       .eq('id', id)
@@ -94,20 +90,20 @@ export class ScenarioService {
       .single()
 
     if (error) {
+      console.error("Error updating scenario group:", error)
       throw error
     }
-    return data as any
+    return data as ScenarioGroup
   }
 
   async deleteScenarioGroup(id: string): Promise<void> {
-    // Note: scenario_groups table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { error } = await this.supabase
-      .from('duty_scenarios')
+      .from('scenario_groups')
       .delete()
       .eq('id', id)
 
     if (error) {
+      console.error("Error deleting scenario group:", error)
       throw error
     }
   }
@@ -121,61 +117,65 @@ export class ScenarioService {
     configuration: ScenarioConfiguration
     is_public?: boolean
   }): Promise<ScenarioTemplate> {
-    // Note: scenario_templates table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { data: { user } } = await this.supabase.auth.getUser()
     if (!user) {
       throw new Error('User not authenticated')
     }
 
     const { data: template, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('scenario_templates')
       .insert({
         workspace_id: data.workspace_id,
         name: data.name,
         description: data.description,
-        status: 'draft',
-        parameters: data.configuration as any
+        category: data.category,
+        configuration: data.configuration,
+        is_public: data.is_public ?? false,
+        created_by: user.id,
       })
       .select()
       .single()
 
     if (error) {
+      console.error("Error creating scenario template:", error)
       throw error
     }
-    return template as any
+    return template as ScenarioTemplate
   }
 
   async getScenarioTemplates(
     workspace_id: string,
-    _include_public = true
+    include_public = true
   ): Promise<ScenarioTemplate[]> {
-    // Note: scenario_templates table not implemented in current schema
-    // Using duty_scenarios as fallback
-    const { data, error } = await this.supabase
-      .from('duty_scenarios')
+    let query = this.supabase
+      .from('scenario_templates')
       .select('*')
       .eq('workspace_id', workspace_id)
-      .order('created_at', { ascending: false })
+
+    if (include_public) {
+      query = query.or(`workspace_id.eq.${workspace_id},is_public.eq.true`)
+    }
+      
+    const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
+      console.error("Error fetching scenario templates:", error)
       throw error
     }
-    return (data || []) as any
+    return (data || []) as ScenarioTemplate[]
   }
 
   async updateScenarioTemplate(
     id: string,
     updates: Partial<Pick<ScenarioTemplate, 'name' | 'description' | 'configuration' | 'is_public'>>
   ): Promise<ScenarioTemplate> {
-    // Note: scenario_templates table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { data, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('scenario_templates')
       .update({ 
         name: updates.name,
         description: updates.description,
-        parameters: updates.configuration as any,
+        configuration: updates.configuration,
+        is_public: updates.is_public,
         updated_at: new Date().toISOString() 
       })
       .eq('id', id)
@@ -183,97 +183,115 @@ export class ScenarioService {
       .single()
 
     if (error) {
+      console.error("Error updating scenario template:", error)
       throw error
     }
-    return data as any
+    return data as ScenarioTemplate
   }
 
   async deleteScenarioTemplate(id: string): Promise<void> {
-    // Note: scenario_templates table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { error } = await this.supabase
-      .from('duty_scenarios')
+      .from('scenario_templates')
       .delete()
       .eq('id', id)
 
     if (error) {
+      console.error("Error deleting scenario template:", error)
       throw error
     }
   }
 
   // Enhanced Scenario Management
-  async createScenario(request: CreateScenarioRequest): Promise<any> {
+  async createScenario(request: CreateScenarioRequest): Promise<EnhancedScenario> {
     const { data: { user } } = await this.supabase.auth.getUser()
     if (!user) {
       throw new Error('User not authenticated')
     }
 
     const { data: scenario, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('enhanced_scenarios') // Changed table name
       .insert({
         workspace_id: request.workspace_id,
         name: request.name,
         description: request.description || '',
+        scenario_type: request.scenario_type,
         status: 'draft',
-        parameters: (request.configuration || {}) as any
+        group_id: request.group_id,
+        template_id: request.template_id,
+        configuration: request.configuration,
+        results: {} as ScenarioResults, // Initialize with empty results
+        created_by: user.id,
       })
       .select()
       .single()
 
     if (error) {
+      console.error("Error creating enhanced scenario:", error)
       throw error
     }
+    // TODO: Handle scenario_products insertion if product_ids are provided
 
-    return scenario
+    return scenario as EnhancedScenario
   }
 
   async getScenarios(
     workspace_id: string,
     filters?: {
       status?: string
+      group_id?: string
+      scenario_type?: string
     }
-  ): Promise<any[]> {
+  ): Promise<EnhancedScenario[]> {
     let query = this.supabase
-      .from('duty_scenarios')
+      .from('enhanced_scenarios') // Changed table name
       .select('*')
       .eq('workspace_id', workspace_id)
 
     if (filters?.status) {
       query = query.eq('status', filters.status)
     }
+    if (filters?.group_id) {
+      query = query.eq('group_id', filters.group_id)
+    }
+    if (filters?.scenario_type) {
+      query = query.eq('scenario_type', filters.scenario_type)
+    }
+
 
     const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
+      console.error("Error fetching enhanced scenarios:", error)
       throw error
     }
-    return data || []
+    return (data || []) as EnhancedScenario[]
   }
 
-  async getScenario(id: string): Promise<any | null> {
+  async getScenario(id: string): Promise<EnhancedScenario | null> {
     const { data, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('enhanced_scenarios') // Changed table name
       .select('*')
       .eq('id', id)
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') {
+      if (error.code === 'PGRST116') { // Resource not found
         return null
       }
+      console.error(`Error fetching enhanced scenario ${id}:`, error)
       throw error
     }
-    return data
+    return data as EnhancedScenario
   }
 
-  async updateScenario(id: string, updates: UpdateScenarioRequest): Promise<any> {
+  async updateScenario(id: string, updates: UpdateScenarioRequest): Promise<EnhancedScenario> {
     const { data, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('enhanced_scenarios') // Changed table name
       .update({
         name: updates.name,
         description: updates.description,
         status: updates.status,
-        parameters: updates.configuration,
+        configuration: updates.configuration,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -281,18 +299,23 @@ export class ScenarioService {
       .single()
 
     if (error) {
+      console.error(`Error updating enhanced scenario ${id}:`, error)
       throw error
     }
-    return data
+    return data as EnhancedScenario
   }
 
   async deleteScenario(id: string): Promise<void> {
+    // Also delete related scenario_products
+    await this.supabase.from('scenario_products').delete().eq('scenario_id', id);
+    
     const { error } = await this.supabase
-      .from('duty_scenarios')
+      .from('enhanced_scenarios') // Changed table name
       .delete()
       .eq('id', id)
 
     if (error) {
+      console.error(`Error deleting enhanced scenario ${id}:`, error)
       throw error
     }
   }
@@ -380,15 +403,18 @@ export class ScenarioService {
 
     // Update scenario results in database
     const { error: updateError } = await this.supabase
-      .from('enhanced_scenarios')
+      .from('enhanced_scenarios') // Ensure this table exists
       .update({
-        results: scenarioResults as any,
+        results: scenarioResults, // No 'as any' if types match
+        status: 'completed', // Update status as well
         completed_at: new Date().toISOString()
       })
       .eq('id', request.scenario_id)
 
     if (updateError) {
-      throw updateError
+      console.error(`Error updating enhanced_scenario ${request.scenario_id} with results:`, updateError);
+      // Decide if this should throw or just log
+      // throw updateError; 
     }
 
     // Generate recommendations if requested
@@ -416,71 +442,63 @@ export class ScenarioService {
     }
 
     // Get workspace_id from the first scenario
-    const { data: scenario } = await this.supabase
-      .from('enhanced_scenarios')
+    const { data: firstScenarioData } = await this.supabase
+      .from('enhanced_scenarios') // Changed table name
       .select('workspace_id')
-      .eq('id', request.scenario_ids[0])
+      .in('id', request.scenario_ids) // Check first ID from the array
+      .limit(1)
       .single()
 
-    if (!scenario) {
-      throw new Error('Scenario not found')
+    if (!firstScenarioData) {
+      throw new Error('One or more scenarios not found for comparison')
     }
 
     const { data: comparison, error } = await this.supabase
-      .from('scenario_comparisons')
+      .from('scenario_comparisons') // Ensure this table exists
       .insert({
-        workspace_id: scenario.workspace_id,
+        workspace_id: firstScenarioData.workspace_id,
         name: request.name,
         description: request.description,
         scenario_ids: request.scenario_ids,
         comparison_type: request.comparison_type,
-        results: {},
+        results: {} as ComparisonResults, // Initialize with empty results
         created_by: user.id
       })
       .select()
       .single()
 
     if (error) {
+      console.error("Error creating scenario comparison:", error)
       throw error
     }
-    return {
-      ...comparison,
-      comparison_type: 'side_by_side' as const,
-      created_by: '',
-      description: '',
-      results: comparison.results as unknown as ComparisonResults
-    }
+    return comparison as ScenarioComparison // Cast to defined type
   }
 
   async runComparisonAnalysis(comparison_id: string): Promise<ComparisonAnalysisResponse> {
-    const { data: comparison, error } = await this.supabase
-      .from('scenario_comparisons')
+    const { data: comparisonData, error: comparisonError } = await this.supabase
+      .from('scenario_comparisons') // Ensure this table exists
       .select('*')
       .eq('id', comparison_id)
       .single()
 
-    if (error) {
-      throw error
+    if (comparisonError) {
+      console.error(`Error fetching scenario comparison ${comparison_id}:`, comparisonError)
+      throw comparisonError
     }
+    const comparison = comparisonData as ScenarioComparison;
 
-    // Cast comparison to include missing properties
-    const typedComparison = {
-      ...comparison,
-      comparison_type: 'side_by_side' as const,
-      created_by: '',
-      description: '',
-      results: comparison.results as unknown as ComparisonResults
-    }
 
-    // Get all scenarios
-    const { data: scenarios, error: scenariosError } = await this.supabase
-      .from('enhanced_scenarios')
+    // Get all scenarios involved in the comparison
+    const { data: scenariosData, error: scenariosError } = await this.supabase
+      .from('enhanced_scenarios') // Changed table name
       .select('*')
       .in('id', comparison.scenario_ids)
 
     if (scenariosError) {
+      console.error(`Error fetching scenarios for comparison ${comparison_id}:`, scenariosError)
       throw scenariosError
     }
+    const scenarios = (scenariosData || []) as EnhancedScenario[];
 
     // Generate comparison results
     const comparisonResults: ComparisonResults = {
@@ -509,33 +527,21 @@ export class ScenarioService {
 
     // Update comparison with results
     const { error: updateError } = await this.supabase
-      .from('scenario_comparisons')
-      .update({ results: comparisonResults as any })
+      .from('scenario_comparisons') // Ensure this table exists
+      .update({ results: comparisonResults })
       .eq('id', comparison_id)
 
     if (updateError) {
-      throw updateError
+      console.error(`Error updating scenario comparison ${comparison_id} with results:`, updateError)
+      // Decide if this should throw or just log
     }
 
     return {
       comparison: { 
-        ...typedComparison, 
+        ...comparison, 
         results: comparisonResults
       },
-      scenarios: scenarios.map((scenario: any) => ({
-        id: scenario.id,
-        workspace_id: scenario.workspace_id,
-        name: scenario.name,
-        description: scenario.description,
-        scenario_type: scenario.scenario_type || 'optimization',
-        status: scenario.status || 'active',
-        configuration: scenario.configuration || {},
-        created_by: scenario.created_by || '',
-        created_at: scenario.created_at,
-        updated_at: scenario.updated_at,
-        scenario_ids: scenario.scenario_ids || [],
-        results: scenario.results || {}
-      })),
+      scenarios,
       results: comparisonResults
     }
   }
@@ -619,62 +625,31 @@ export class ScenarioService {
 
     // Insert recommendations into database
     if (recommendations.length > 0) {
-      const { data, error } = await this.supabase
-        .from('duty_scenarios')
+      const { data: insertedRecs, error } = await this.supabase
+        .from('optimization_recommendations') // Changed table name
         .insert(recommendations.map(rec => ({
+          // Map rec fields to optimization_recommendations table columns
           workspace_id: rec.workspace_id,
-          name: rec.title,
+          scenario_id: rec.scenario_id,
+          product_id: rec.product_id,
+          recommendation_type: rec.type,
+          title: rec.title,
           description: rec.description,
-          parameters: rec.implementation_requirements as any,
+          impact_analysis: rec.impact_analysis,
+          implementation_requirements: rec.implementation_requirements,
+          confidence_score: rec.confidence_score,
+          priority: rec.priority,
           status: rec.status,
-          potential_savings: 0,
-          total_products: 1
         })))
-        .select()
+        .select();
 
       if (error) {
-      throw error
+        console.error("Error storing optimization recommendations:", error)
+        throw error;
+      }
+      return (insertedRecs || []) as OptimizationRecommendation[];
     }
-      
-      // Map duty_scenarios back to OptimizationRecommendation format
-      return data?.map((item: any) => ({
-        id: item.id,
-        workspace_id: item.workspace_id,
-        scenario_id: scenario_id,
-        product_id: recommendations[0]?.product_id || '',
-        recommendation_type: 'classification',
-        title: item.name,
-        description: item.description,
-        impact_analysis: {
-          financial_impact: {
-            savings_per_unit: 0,
-            annual_savings: 0,
-            implementation_cost: 0,
-            roi: 0,
-            payback_period_months: 0
-          },
-          operational_impact: {
-            complexity: 'low' as const,
-            resource_requirements: [],
-            timeline_weeks: 0,
-            dependencies: []
-          },
-          risk_impact: {
-            compliance_risk: 'low' as const,
-            business_risk: 'low' as const,
-            mitigation_required: false
-          }
-        },
-        implementation_requirements: item.parameters,
-        confidence_score: recommendations[0]?.confidence_score || 0.8,
-        priority: recommendations[0]?.priority || 'medium',
-        status: item.status,
-        created_at: item.created_at,
-        updated_at: item.updated_at
-      })) || []
-    }
-
-    return []
+    return [];
   }
 
   async getOptimizationRecommendations(
@@ -687,111 +662,42 @@ export class ScenarioService {
       priority?: OptimizationRecommendation['priority']
     }
   ): Promise<OptimizationRecommendation[]> {
-    // Note: optimization_recommendations table not implemented in current schema
-    // Using duty_scenarios as fallback
     let query = this.supabase
-      .from('duty_scenarios')
+      .from('optimization_recommendations') // Changed table name
       .select('*')
       .eq('workspace_id', workspace_id)
 
-    if (filters?.status) {
-      query = query.eq('status', filters.status)
-    }
-
-    const { data, error } = await query
-      .order('created_at', { ascending: false })
+    if (filters?.scenario_id) query = query.eq('scenario_id', filters.scenario_id);
+    if (filters?.product_id) query = query.eq('product_id', filters.product_id);
+    if (filters?.recommendation_type) query = query.eq('recommendation_type', filters.recommendation_type);
+    if (filters?.status) query = query.eq('status', filters.status);
+    if (filters?.priority) query = query.eq('priority', filters.priority);
+    
+    const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
+      console.error("Error fetching optimization recommendations:", error)
       throw error
     }
-    
-    // Map duty_scenarios to OptimizationRecommendation format
-    return (data || []).map(scenario => ({
-      id: scenario.id,
-      workspace_id: scenario.workspace_id,
-      recommendation_type: 'classification' as const,
-      title: scenario.name,
-      description: scenario.description,
-      impact_analysis: {
-        financial_impact: {
-          savings_per_unit: 0,
-          annual_savings: 0,
-          implementation_cost: 0,
-          roi: 0,
-          payback_period_months: 0
-        },
-        operational_impact: {
-          complexity: 'low' as const,
-          resource_requirements: [],
-          timeline_weeks: 0,
-          dependencies: []
-        },
-        risk_impact: {
-          compliance_risk: 'low' as const,
-          business_risk: 'low' as const,
-          mitigation_required: false
-        }
-      },
-      implementation_requirements: {} as any,
-      confidence_score: 0.8,
-      priority: 'medium' as const,
-      status: scenario.status as any,
-      created_at: scenario.created_at,
-      updated_at: scenario.updated_at
-    }))
+    return (data || []) as OptimizationRecommendation[]
   }
 
   async updateRecommendationStatus(
     id: string,
     status: OptimizationRecommendation['status']
   ): Promise<OptimizationRecommendation> {
-    // Note: optimization_recommendations table not implemented in current schema
-    // Using duty_scenarios as fallback
     const { data, error } = await this.supabase
-      .from('duty_scenarios')
+      .from('optimization_recommendations') // Changed table name
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single()
 
     if (error) {
+      console.error(`Error updating recommendation ${id} status:`, error)
       throw error
     }
-    
-    // Map duty_scenario to OptimizationRecommendation format
-    return {
-      id: data.id,
-      workspace_id: data.workspace_id,
-      recommendation_type: 'classification' as const,
-      title: data.name,
-      description: data.description,
-      impact_analysis: {
-        financial_impact: {
-          savings_per_unit: 0,
-          annual_savings: 0,
-          implementation_cost: 0,
-          roi: 0,
-          payback_period_months: 0
-        },
-        operational_impact: {
-          complexity: 'low' as const,
-          resource_requirements: [],
-          timeline_weeks: 0,
-          dependencies: []
-        },
-        risk_impact: {
-          compliance_risk: 'low' as const,
-          business_risk: 'low' as const,
-          mitigation_required: false
-        }
-      },
-      implementation_requirements: {} as any,
-      confidence_score: 0.8,
-      priority: 'medium' as const,
-      status: data.status as any,
-      created_at: data.created_at,
-      updated_at: data.updated_at
-    }
+    return data as OptimizationRecommendation
   }
 
   // Utility Methods

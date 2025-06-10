@@ -1,6 +1,6 @@
 # Task ID: 22
 # Title: Phase 3: Implement Robust Background Jobs System (Queue, Error Handling, Monitoring, Optimization)
-# Status: pending
+# Status: done
 # Dependencies: 21
 # Priority: medium
 # Description: Implement a robust queue system, comprehensive error handling, job monitoring dashboard, and performance optimization.
@@ -8,4 +8,36 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Standardize Job Processing on AdvancedBatchProcessor [done]
+### Dependencies: None
+### Description: Refactor API routes using simple JobProcessor (e.g., /api/jobs/route.ts, /api/optimization/route.ts) to use AdvancedBatchProcessor.addJob() for all job types, leveraging its queue, concurrency, and retry features.
+### Details:
+
+
+## 2. Correct Supabase Client in AdvancedBatchProcessor [done]
+### Dependencies: None
+### Description: Modify AdvancedBatchProcessor to use a server-side Supabase client (e.g., createDutyLeakServerClient() or createDutyLeakAdminClient()) instead of createBrowserClient(), ensuring correct backend database operations.
+### Details:
+
+
+## 3. Implement Basic Job Monitoring UI [done]
+### Dependencies: None
+### Description: Create an admin page (e.g., /admin/jobs) to list jobs from the 'jobs' table, showing ID, type, status, progress, timestamps, errors. Include a 'Retry Failed Job' action.
+### Details:
+
+
+## 4. Enhance Error Handling with DLQ Concept [done]
+### Dependencies: None
+### Description: Modify AdvancedBatchProcessor: after max retries, mark job with a distinct status (e.g., 'dead_letter') or log distinctively for easier identification of persistently failing jobs (DLQ concept).
+### Details:
+
+
+## 5. Configuration for Job Processor [done]
+### Dependencies: None
+### Description: Make AdvancedBatchProcessor parameters (maxConcurrentJobs, retryAttempts, retryDelay, batchSize) configurable via environment variables or central config, not just constructor options.
+### Details:
+
 

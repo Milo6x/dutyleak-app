@@ -84,49 +84,66 @@ export class JobProcessor {
     const classificationEngine = new ClassificationEngine();
     const total = productIds.length;
     let processed = 0;
+    const classificationsToInsert: any[] = [];
+    let productsToProcess: any[] = [];
 
-    for (const productId of productIds) {
+    // Batch fetch products
+    const { data: products, error: productsFetchError } = await supabase
+      .from('products')
+      .select('id, title, description')
+      .in('id', productIds);
+
+    if (productsFetchError) {
+      throw new Error(`Failed to fetch products for bulk classification: ${productsFetchError.message}`);
+    }
+    
+    if (!products || products.length === 0) {
+      console.warn('No products found for the given IDs in bulk classification.');
+      await this.updateJobStatus(jobId, 'completed', 100, supabase); // Mark as complete if no products
+      return;
+    }
+    productsToProcess = products;
+
+    for (const product of productsToProcess) {
       try {
-        // Get product details
-        const { data: product, error: productError } = await supabase
-          .from('products')
-          .select('id, title, description')
-          .eq('id', productId)
-          .single();
-
-        if (productError || !product) {
-          console.error(`Product ${productId} not found:`, productError);
-          continue;
-        }
-
         // Classify product
+        // Note: classificationEngine.classifyProduct might still do individual DB calls internally.
+        // For full N+1 optimization, that engine might also need a batch method.
         const result = await classificationEngine.classifyProduct({
-          productId: productId,
+          productId: product.id,
           productName: product.title,
           productDescription: product.description || ''
         }, supabase);
 
-        // Save classification result
-        const { error: classificationError } = await supabase
-          .from('classifications')
-          .insert({
-            product_id: productId,
-            hs6: result.hsCode?.substring(0, 6),
-            hs8: result.hsCode,
-            confidence_score: result.confidenceScore,
-            classification_method: 'ai_bulk'
-          });
+        classificationsToInsert.push({
+          product_id: product.id,
+          hs6: result.hsCode?.substring(0, 6),
+          hs8: result.hsCode,
+          confidence_score: result.confidenceScore,
+          classification_method: 'ai_bulk'
+        });
 
-        if (classificationError) {
-          console.error(`Failed to save classification for product ${productId}:`, classificationError);
-        }
-
+      } catch (error) {
+        console.error(`Error classifying product ${product.id}:`, error);
+      } finally {
         processed++;
         const progress = Math.round((processed / total) * 100);
-        await this.updateJobStatus(jobId, 'running', progress, supabase);
-        
-      } catch (error) {
-        console.error(`Error processing product ${productId}:`, error);
+        // Update progress less frequently to reduce DB load, e.g., every 5% or every N items
+        if (processed % Math.max(1, Math.floor(total / 20)) === 0 || processed === total) {
+          await this.updateJobStatus(jobId, 'running', progress, supabase);
+        }
+      }
+    }
+
+    // Batch insert classifications
+    if (classificationsToInsert.length > 0) {
+      const { error: classificationInsertError } = await supabase
+        .from('classifications')
+        .insert(classificationsToInsert);
+
+      if (classificationInsertError) {
+        console.error(`Failed to save batch classifications:`, classificationInsertError);
+        // Optionally, you could try individual inserts as a fallback or log more details
       }
     }
   }
@@ -147,21 +164,27 @@ export class JobProcessor {
     const fbaCalculator = new FbaFeeCalculator();
     const total = productIds.length;
     let processed = 0;
+    let productsToProcess: any[] = [];
 
-    for (const productId of productIds) {
+    // Batch fetch products
+    const { data: products, error: productsFetchError } = await supabase
+      .from('products')
+      .select('id, asin, dimensions, weight, category')
+      .in('id', productIds);
+
+    if (productsFetchError) {
+      throw new Error(`Failed to fetch products for bulk FBA calculation: ${productsFetchError.message}`);
+    }
+
+    if (!products || products.length === 0) {
+      console.warn('No products found for the given IDs in bulk FBA calculation.');
+      await this.updateJobStatus(jobId, 'completed', 100, supabase); // Mark as complete if no products
+      return;
+    }
+    productsToProcess = products;
+
+    for (const product of productsToProcess) {
       try {
-        // Get product details
-        const { data: product, error: productError } = await supabase
-          .from('products')
-          .select('id, asin, dimensions, weight, category')
-          .eq('id', productId)
-          .single();
-
-        if (productError || !product) {
-          console.error(`Product ${productId} not found:`, productError);
-          continue;
-        }
-
         let fbaResult;
         if (product.asin) {
           // Use ASIN-based calculation if available
@@ -176,24 +199,27 @@ export class JobProcessor {
         }
 
         // Update product with FBA fee
+        // Note: Batch updates with different values per row are complex with Supabase client.
+        // This remains an individual update, but the reads are batched.
         const { error: updateError } = await supabase
           .from('products')
           .update({
             fba_fee_estimate_usd: fbaResult.fbaFee,
             updated_at: new Date().toISOString()
           })
-          .eq('id', productId);
+          .eq('id', product.id);
 
         if (updateError) {
-          console.error(`Failed to update FBA fee for product ${productId}:`, updateError);
+          console.error(`Failed to update FBA fee for product ${product.id}:`, updateError);
         }
-
+      } catch (error) {
+        console.error(`Error processing FBA calculation for product ${product.id}:`, error);
+      } finally {
         processed++;
         const progress = Math.round((processed / total) * 100);
-        await this.updateJobStatus(jobId, 'running', progress, supabase);
-        
-      } catch (error) {
-        console.error(`Error processing FBA calculation for product ${productId}:`, error);
+        if (processed % Math.max(1, Math.floor(total / 20)) === 0 || processed === total) {
+          await this.updateJobStatus(jobId, 'running', progress, supabase);
+        }
       }
     }
   }
@@ -214,37 +240,45 @@ export class JobProcessor {
     const optimizationEngine = new OptimizationEngine();
     const total = productIds.length;
     let processed = 0;
+    const savingsToInsert: any[] = [];
 
     for (const productId of productIds) {
       try {
         // Run optimization for each product
+        // Note: optimizationEngine.generateRecommendations might do individual DB calls.
+        // For full N+1 optimization, that engine might also need a batch method.
         const recommendations = await optimizationEngine.generateRecommendations([productId]);
 
-        // Save optimization results to savings_ledger
         for (const recommendation of recommendations) {
-          const { error: optimizationError } = await supabase
-            .from('savings_ledger')
-            .insert({
-              product_id: recommendation.productId,
-              workspace_id: metadata.workspaceId || '',
-              savings_amount: recommendation.potentialSaving || 0,
-              savings_percentage: recommendation.confidenceScore || 0,
-              baseline_duty_rate: 0, // Default baseline rate
-              optimized_duty_rate: 0, // Will be calculated based on recommendation
-              calculation_id: `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` // Generate unique calculation ID
-            });
-
-          if (optimizationError) {
-            console.error(`Failed to save optimization result for product ${productId}:`, optimizationError);
-          }
+          savingsToInsert.push({
+            product_id: recommendation.productId,
+            workspace_id: metadata.workspaceId || '', // Ensure workspaceId is available in metadata
+            savings_amount: recommendation.potentialSaving || 0,
+            savings_percentage: recommendation.confidenceScore || 0, // Assuming confidenceScore maps to savings_percentage
+            baseline_duty_rate: 0, // Placeholder, actual baseline might need to be fetched or calculated
+            optimized_duty_rate: 0, // Placeholder, actual optimized rate might need to be calculated
+            calculation_id: `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          });
         }
-
+      } catch (error) {
+        console.error(`Error generating recommendations for product ${productId}:`, error);
+      } finally {
         processed++;
         const progress = Math.round((processed / total) * 100);
-        await this.updateJobStatus(jobId, 'running', progress, supabase);
-        
-      } catch (error) {
-        console.error(`Error processing optimization for product ${productId}:`, error);
+        if (processed % Math.max(1, Math.floor(total / 20)) === 0 || processed === total) {
+          await this.updateJobStatus(jobId, 'running', progress, supabase);
+        }
+      }
+    }
+
+    // Batch insert savings ledger entries
+    if (savingsToInsert.length > 0) {
+      const { error: optimizationInsertError } = await supabase
+        .from('savings_ledger')
+        .insert(savingsToInsert);
+
+      if (optimizationInsertError) {
+        console.error(`Failed to save batch optimization results:`, optimizationInsertError);
       }
     }
   }
@@ -334,37 +368,35 @@ export class JobProcessor {
     }
 
     const total = importData.length;
-    let processed = 0;
     let errors = 0;
 
-    for (const item of importData) {
-      try {
-        // Validate and insert product data
-        const { error: insertError } = await supabase
-          .from('products')
-          .insert({
-            title: item.title,
-            asin: item.asin,
-            price_usd: item.price_usd,
-            description: item.description,
-            category: item.category,
-            created_at: new Date().toISOString()
-          });
+    // Prepare data for batch insert
+    const productsToInsert = importData.map(item => ({
+      title: item.title,
+      asin: item.asin,
+      price_usd: item.price_usd,
+      description: item.description,
+      category: item.category,
+      created_at: new Date().toISOString(),
+      // Ensure workspace_id is included if it's a required field and available in metadata
+      // workspace_id: metadata.workspaceId 
+    }));
 
-        if (insertError) {
-          console.error('Failed to insert product:', insertError);
-          errors++;
-        }
+    if (productsToInsert.length > 0) {
+      const { error: insertError } = await supabase
+        .from('products')
+        .insert(productsToInsert);
 
-        processed++;
-        const progress = Math.round((processed / total) * 100);
-        await this.updateJobStatus(jobId, 'running', progress, supabase);
-        
-      } catch (error) {
-        console.error('Error processing import item:', error);
-        errors++;
+      if (insertError) {
+        console.error('Failed to batch insert products:', insertError);
+        // If batch fails, you might want to log the error and potentially try individual inserts or mark all as failed.
+        // For simplicity here, we'll count all as errors if batch fails.
+        errors = total;
       }
     }
+    
+    const successfulImports = total - errors;
+    await this.updateJobStatus(jobId, 'running', 100, supabase); // Mark progress as 100% after attempt
 
     // Update job metadata with import results
     const { error: updateError } = await supabase
@@ -373,7 +405,7 @@ export class JobProcessor {
         metadata: {
           ...metadata,
           totalRecords: total,
-          successfulImports: processed - errors,
+          successfulImports: total - errors,
           failedImports: errors
         }
       })

@@ -1,6 +1,7 @@
 import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { JobProcessor } from '@/lib/jobs/job-processor';
+// import { JobProcessor } from '@/lib/jobs/job-processor'; // No longer used directly here
+import { batchProcessor, BatchJob } from '@/lib/batch/advanced-batch-processor'; // Import AdvancedBatchProcessor
 
 export async function GET(req: NextRequest) {
   try {
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     // Parse request body
     const body = await req.json();
-    const { type, metadata = {} } = body;
+    const { type, parameters = {}, priority = 'medium' } = body; // Changed 'metadata' to 'parameters' to match common usage, and added 'priority'
 
     if (!type) {
       return NextResponse.json(
@@ -104,6 +105,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate job type
+    // Note: AdvancedBatchProcessor has its own type definition for BatchJob['type']
+    // We should ideally validate against that or ensure consistency.
+    // For now, keeping existing validation.
     const validJobTypes = [
       'bulk_classification',
       'bulk_fba_calculation',
@@ -134,49 +138,68 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create job in database
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .insert({
-        workspace_id: workspaceUser.workspace_id,
-        type,
-        status: 'pending',
-        progress: 0,
-        parameters: metadata
-      })
-      .select('id, type, status, progress, created_at, parameters')
-      .single();
+    // Prepare metadata for AdvancedBatchProcessor
+    // AdvancedBatchProcessor's BatchJob['metadata'] includes:
+    // productIds?, parameters?, retryCount?, maxRetries?, estimatedDuration?, actualDuration?, workspaceId?
+    
+    // Separate productIds from other parameters if present in the request's 'parameters' object
+    const { productIds, ...otherJobParams } = parameters;
 
-    if (jobError) {
+    const jobMetadataForProcessor: BatchJob['metadata'] = {
+        parameters: { // Store other custom parameters here
+            ...otherJobParams, 
+            userId: user.id // Add userId to the nested parameters object
+        }, 
+        workspaceId: workspaceUser.workspace_id,
+        productIds: productIds // Assign extracted productIds to the top-level metadata.productIds
+    };
+
+    // Add job to AdvancedBatchProcessor queue
+    // The batchProcessor will handle persistence if enabled.
+    const jobId = await batchProcessor.addJob(
+      type as BatchJob['type'], // Ensure type matches BatchJob['type']
+      jobMetadataForProcessor,
+      priority as BatchJob['priority'] // Ensure priority matches BatchJob['priority']
+    );
+
+    if (!jobId) {
+      console.error('Job creation API error: AdvancedBatchProcessor.addJob did not return a jobId');
       return NextResponse.json(
-        { error: 'Failed to create job', details: jobError.message },
+        { error: 'Failed to create job using AdvancedBatchProcessor' },
         { status: 500 }
       );
     }
 
-    // Initialize job processor and start the job asynchronously
-    const jobProcessor = new JobProcessor();
+    // Get the job details from the processor to return
+    const jobDetails = batchProcessor.getJob(jobId);
+
+    if (!jobDetails) {
+      // This case should ideally not happen if addJob succeeded and persistence is on.
+      console.error(`Job creation API error: Job ${jobId} not found in AdvancedBatchProcessor after creation.`);
+      return NextResponse.json(
+        { error: 'Failed to retrieve job details after creation' },
+        { status: 500 }
+      );
+    }
     
-    // Don't await this - let it run in the background
-    jobProcessor.processJob(job.id, type, metadata, supabase)
-      .catch(error => {
-        console.error(`Background job ${job.id} failed:`, error);
-      });
+    // The AdvancedBatchProcessor handles its own async processing, no need to call JobProcessor here.
 
     return NextResponse.json({
       success: true,
-      job: {
-        id: job.id,
-        type: job.type,
-        status: job.status,
-        progress: job.progress,
-        createdAt: job.created_at,
-        metadata: job.parameters
+      job: { // Return a structure consistent with what the client might expect
+        id: jobDetails.id,
+        type: jobDetails.type,
+        status: jobDetails.status,
+        priority: jobDetails.priority,
+        progress: jobDetails.progress.percentage,
+        createdAt: jobDetails.timestamps.created.toISOString(),
+        metadata: jobDetails.metadata.parameters, // Return the original parameters
+        fullJobDetails: jobDetails // Optionally return the full object for more detail
       }
     });
     
-  } catch (error) {
-    console.error('Job creation API error:', error);
+  } catch (error: any) {
+    console.error('Job creation API error:', error.message, error.stack);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

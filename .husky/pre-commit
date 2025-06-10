@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Running pre-commit hooks..."
+
+# Check for TypeScript errors
+npm run type-check
+if [ $? -ne 0 ]; then
+  echo "TypeScript check failed. Please fix errors before committing."
+  exit 1
+fi
+echo "TypeScript check passed."
+
+# Run ESLint
+npm run lint
+if [ $? -ne 0 ]; then
+  echo "ESLint check failed. Please fix errors before committing."
+  exit 1
+fi
+echo "ESLint check passed."
+
+# Check Prettier formatting
+npm run format:check
+if [ $? -ne 0 ]; then
+  echo "Prettier check failed. Please run 'npm run format' to fix formatting issues before committing."
+  exit 1
+fi
+echo "Prettier check passed."
+
+echo "All pre-commit checks passed."
+exit 0

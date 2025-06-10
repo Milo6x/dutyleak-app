@@ -1,6 +1,6 @@
 # Task ID: 23
 # Title: Phase 4: Plan and Implement Comprehensive Unit, Integration, and E2E Testing
-# Status: pending
+# Status: done
 # Dependencies: 8, 10, 12, 14, 16, 18, 20, 22
 # Priority: medium
 # Description: Develop and implement test plans and write tests for unit, integration, and end-to-end testing based on the defined testing strategy.
@@ -8,4 +8,36 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Develop Detailed Test Plan [done]
+### Dependencies: None
+### Description: Identify key modules, components, API endpoints, and user flows for testing. Define scope for unit, integration, and E2E tests, prioritizing critical paths. Specify tools (Jest, Playwright). Output: A TESTING_PLAN.md document.
+### Details:
+
+
+## 2. Write Unit Tests for Core Logic [done]
+### Dependencies: None
+### Description: Write Jest unit tests for src/lib classes/functions (ClassificationEngine, FbaFeeCalculator, OptimizationEngine, ScenarioEngine, MetricsCalculator, AdvancedBatchProcessor, permissions.ts helpers). Mock dependencies. Aim for good coverage.
+### Details:
+
+
+## 3. Write Integration Tests for API Endpoints [done]
+### Dependencies: None
+### Description: Write Jest integration tests for key API endpoints (e.g., /api/products, /api/jobs, /api/classification/classify). Test request/response, auth, validation, service/DB interactions (mocked/test DB).
+### Details:
+
+
+## 4. Write E2E Tests for Key User Flows [done]
+### Dependencies: None
+### Description: Write Playwright E2E tests for key user flows (Signup, Product Import & Classification, Scenario Modeling, Analytics, Admin Job Monitoring). Expand existing tests and add new ones per TESTING_PLAN.md.
+### Details:
+
+
+## 5. Set Up CI for Automated Testing [done]
+### Dependencies: None
+### Description: Integrate test execution (unit, integration, E2E using Jest & Playwright) into the CI pipeline (e.g., GitHub Actions via .github/workflows/ci.yml). Ensure tests run on PRs and merges.
+### Details:
+
 

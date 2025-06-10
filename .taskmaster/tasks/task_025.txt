@@ -1,6 +1,6 @@
 # Task ID: 25
 # Title: Phase 4: Conduct Security Testing and Vulnerability Assessment
-# Status: pending
+# Status: done
 # Dependencies: 23
 # Priority: medium
 # Description: Perform security tests (OWASP ZAP, manual review) and address identified vulnerabilities.
@@ -8,4 +8,24 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Integrate OWASP ZAP Baseline Scan into CI [done]
+### Dependencies: None
+### Description: Modify .github/workflows/ci.yml to include OWASP ZAP baseline scan against the application (locally started instance or staging URL) to find common web vulnerabilities.
+### Details:
+
+
+## 2. Conduct Manual Security Review [done]
+### Dependencies: None
+### Description: Perform manual security review: Supabase RLS policies, OWASP Top 10 checks in API/auth code, dependency vulnerabilities, API key usage. Document findings in docs/MANUAL_SECURITY_REVIEW.md.
+### Details:
+
+
+## 3. Analyze Security Scan Reports & Manual Findings [done]
+### Dependencies: None
+### Description: Consolidate and analyze findings from OWASP ZAP scans (CI) and manual review (MANUAL_SECURITY_REVIEW.md). Prioritize vulnerabilities. Document analysis.
+### Details:
+
 

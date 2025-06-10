@@ -63,24 +63,38 @@ export async function PUT(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    const { full_name, email } = body
+    const { full_name, email, avatar_url } = body // Added avatar_url
 
     // Validate input
-    if (typeof full_name !== 'string' && full_name !== null) {
+    if (full_name !== undefined && typeof full_name !== 'string' && full_name !== null) {
       return NextResponse.json(
         { error: 'Invalid full_name format' },
         { status: 400 }
       )
     }
+    if (avatar_url !== undefined && typeof avatar_url !== 'string' && avatar_url !== null) {
+      return NextResponse.json(
+        { error: 'Invalid avatar_url format' },
+        { status: 400 }
+      )
+    }
+
+    const profileUpdateData: { id: string; full_name?: string | null; avatar_url?: string | null; updated_at: string } = {
+      id: user.id,
+      updated_at: new Date().toISOString()
+    };
+
+    if (full_name !== undefined) {
+      profileUpdateData.full_name = full_name?.trim() || null;
+    }
+    if (avatar_url !== undefined) {
+      profileUpdateData.avatar_url = avatar_url || null;
+    }
 
     // Update profile
     const { data: profile, error: updateError } = await supabase
       .from('profiles')
-      .upsert({
-        id: user.id,
-        full_name: full_name?.trim() || null,
-        updated_at: new Date().toISOString()
-      })
+      .upsert(profileUpdateData)
       .select('id, full_name, avatar_url, created_at, updated_at')
       .single()
     
@@ -100,26 +114,48 @@ export async function PUT(request: NextRequest) {
       
       if (emailError) {
         console.error('Error updating email:', emailError)
+        // Log failed email update attempt
+        await supabase.from('job_logs').insert({
+          job_id: `profile_email_update_fail_${Date.now()}`,
+          level: 'error',
+          message: `User ${user.id} failed to update email.`,
+          metadata: { user_id: user.id, new_email: email, error: emailError.message }
+        });
         return NextResponse.json(
           { 
             profile: {
               ...profile,
-              email: user.email
+              email: user.email // Return old email as update failed
             },
-            warning: 'Profile updated but email change failed. Please try again later.'
+            warning: `Profile details updated, but email change failed: ${emailError.message}`
           },
-          { status: 200 }
-        )
+          { status: 200 } // Success for profile update, but warning for email
+        );
       }
+      // Log successful email update attempt (Supabase handles confirmation)
+      await supabase.from('job_logs').insert({
+        job_id: `profile_email_update_success_${Date.now()}`,
+        level: 'info',
+        message: `User ${user.id} initiated email update to ${email}. Confirmation pending.`,
+        metadata: { user_id: user.id, old_email: user.email, new_email: email }
+      });
     }
+    
+    // Log successful profile update
+    await supabase.from('job_logs').insert({
+      job_id: `profile_update_${Date.now()}`,
+      level: 'info',
+      message: `User ${user.id} updated profile.`,
+      metadata: { user_id: user.id, updated_fields: Object.keys(body) }
+    });
     
     return NextResponse.json({
       profile: {
         ...profile,
-        email: email || user.email
+        email: user.email // Email from auth store, update happens via confirmation
       },
-      message: 'Profile updated successfully'
-    })
+      message: 'Profile updated successfully. If email was changed, please check your inbox for confirmation.'
+    });
     
   } catch (error) {
     console.error('Error in profile PUT:', error)
@@ -165,16 +201,31 @@ export async function PATCH(request: NextRequest) {
 
     // Update password
     const { error: passwordError } = await supabase.auth.updateUser({
-      password: password
+      password: password // Supabase updateUser doesn't use current_password for logged-in users
     })
     
     if (passwordError) {
       console.error('Error updating password:', passwordError)
+      // Log failed password change attempt
+      await supabase.from('job_logs').insert({
+        job_id: `password_change_fail_${Date.now()}`,
+        level: 'error',
+        message: `User ${user.id} failed to change password.`,
+        metadata: { user_id: user.id, error: passwordError.message }
+      });
       return NextResponse.json(
-        { error: 'Failed to update password. Please check your current password.' },
+        { error: passwordError.message || 'Failed to update password.' }, // Provide more specific error if available
         { status: 400 }
       )
     }
+    
+    // Log successful password change
+    await supabase.from('job_logs').insert({
+      job_id: `password_change_success_${Date.now()}`,
+      level: 'info',
+      message: `User ${user.id} successfully changed password.`,
+      metadata: { user_id: user.id }
+    });
     
     return NextResponse.json({
       message: 'Password updated successfully'

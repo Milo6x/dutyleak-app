@@ -1,6 +1,6 @@
 # Task ID: 20
 # Title: Phase 3: Implement Scenario Modeling Features (What-if, Optimization, Comparison, Collaboration)
-# Status: pending
+# Status: done
 # Dependencies: 19
 # Priority: medium
 # Description: Implement advanced scenario modeling, optimization recommendations, scenario comparison, and collaborative sharing.
@@ -8,4 +8,36 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Implement "What-if" Analysis in Scenario Modeler [done]
+### Dependencies: None
+### Description: Enhance scenario-modeler.tsx to allow users to change parameters (e.g., HS codes, origin, value, shipping) and see immediate impact on duties/landed cost, likely using ScenarioEngine.calculateScenario().
+### Details:
+
+
+## 2. Integrate Optimization Recommendations into Scenarios [done]
+### Dependencies: None
+### Description: In scenario-modeler.tsx or scenario-management-ui.tsx, integrate OptimizationEngine to generate and display recommendations. Allow users to apply a recommendation to create or update a scenario.
+### Details:
+
+
+## 3. Implement Scenario Comparison Feature [done]
+### Dependencies: None
+### Description: Develop UI and backend logic to allow users to select two or more scenarios and compare their key metrics (e.g., total duties, landed cost, savings) side-by-side, potentially using tables and scenario-chart.tsx.
+### Details:
+
+
+## 4. Implement Collaborative Sharing of Scenarios [done]
+### Dependencies: None
+### Description: Backend: Add sharing capabilities to scenarios (e.g., share with users/teams in workspace, potentially involving duty_scenarios table schema changes). Frontend: Add UI for sharing and viewing shared scenarios.
+### Details:
+
+
+## 5. Enhance Scenario API (/api/scenarios/route.ts) [done]
+### Dependencies: None
+### Description: Ensure the API supports full CRUD operations for scenarios, including saving detailed scenario parameters, chosen optimization recommendations, comparison metadata, and sharing settings.
+### Details:
+
 

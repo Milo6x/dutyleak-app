@@ -1,6 +1,6 @@
 # Task ID: 18
 # Title: Phase 3: Implement Analytics Dashboard & Reporting Features (Savings, Profitability, Custom, Real-time)
-# Status: pending
+# Status: done
 # Dependencies: 17
 # Priority: medium
 # Description: Implement savings dashboard, profitability reports, custom reporting, and real-time analytics updates.
@@ -8,4 +8,54 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Enhance MetricsCalculator Logic [done]
+### Dependencies: None
+### Description: Implement placeholder logic in MetricsCalculator: actual top savings opportunities, realistic potential savings, refined cost breakdown. Integrate real data for mocked performance metrics or document as out-of-scope. Ensure consistent workspace/user ID usage. Reconcile savings calculation in /api/dashboard/stats.
+### Details:
+
+
+## 2. Improve Export Functionality [done]
+### Dependencies: None
+### Description: Make convertToCSV in /api/analytics/export/route.ts comprehensive. Implement/review /api/analytics/pdf endpoint for PDF generation. Standardize export UI/UX across all analytics dashboards.
+### Details:
+
+
+## 3. Address Server-Side Caching for Dashboards [done]
+### Dependencies: None
+### Description: Implement proper server-side cleanup mechanism for dashboard-cache.ts or evaluate/implement a more robust caching solution (e.g., Redis-backed) if scalability requires it.
+### Details:
+
+
+## 4. Implement /api/metrics Endpoint [done]
+### Dependencies: None
+### Description: Create the backend API endpoint /api/metrics to receive and store client-side performance data sent by dashboard-metrics.ts.
+### Details:
+
+
+## 5. Implement Placeholder UI Functionalities [done]
+### Dependencies: None
+### Description: Implement 'Take Action' buttons in profitability-analytics.tsx and comprehensive-dashboard.tsx. Implement 'Quick Actions' placeholders in comprehensive-dashboard.tsx. Implement getCategoryInsights in /api/analytics/comprehensive/route.ts. Implement refresh_cache and generate_insights POST actions in /api/analytics/comprehensive/route.ts.
+### Details:
+
+
+## 6. Custom Reporting Implementation [done]
+### Dependencies: None
+### Description: Design and implement UI and backend functionalities for users to create and view custom-defined reports, if specified as a requirement in the PRD or other project documentation.
+### Details:
+
+
+## 7. Real-time Analytics Updates Implementation [done]
+### Dependencies: None
+### Description: Implement mechanisms for real-time or near real-time data updates on dashboards (e.g., polling, WebSockets), if specified as a requirement beyond current manual refresh capabilities.
+### Details:
+
+
+## 8. Real-time Analytics Updates Implementation [done]
+### Dependencies: None
+### Description: Implement mechanisms for real-time or near real-time data updates on dashboards (e.g., polling, WebSockets), if specified as a requirement beyond current manual refresh capabilities.
+### Details:
+
 

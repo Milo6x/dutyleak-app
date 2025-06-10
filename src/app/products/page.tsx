@@ -156,18 +156,22 @@ export default function ProductsPage() {
     if (!confirm('Are you sure you want to delete this product?')) {return}
 
     try {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', productId)
+      // Call the API endpoint for deletion
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) {throw error}
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete product');
+      }
 
-      setProducts(products.filter(p => p.id !== productId))
-      setTotalCount(totalCount - 1)
+      toast.success('Product deleted successfully');
+      setProducts(products.filter(p => p.id !== productId));
+      setTotalCount(prevCount => prevCount - 1); // Ensure correct update of totalCount
     } catch (error) {
-      console.error('Error deleting product:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to delete product')
+      console.error('Error deleting product:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete product');
     }
   }
 

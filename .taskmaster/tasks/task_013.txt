@@ -1,6 +1,6 @@
 # Task ID: 13
 # Title: Phase 2: Review Duty & FBA Calculation Engines
-# Status: pending
+# Status: done
 # Dependencies: 6
 # Priority: medium
 # Description: Evaluate existing calculation engines, multi-country support, FBA integration, and currency conversion.

@@ -1,5 +1,34 @@
 import { createDutyLeakServerClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
+// import { cookies } from 'next/headers' // cookies import not used server-side in this class
+import { OptimizationEngine, OptimizationRecommendation } from '@/lib/duty/optimization-engine' // Added import
+
+// Define a more specific type for items from savings_ledger joined with product
+interface SavingsLedgerItemWithProduct {
+  savings_amount: number | null;
+  savings_percentage: number | null;
+  created_at: string; // Assuming created_at is present for monthlyTrend
+  product_id: string; // Assuming product_id is present
+  // other fields from savings_ledger can be added here if known
+  product?: { // product can be null if join fails or no product
+    id: string;
+    name: string | null;
+    price: number | null;
+    // other fields from product
+  } | null;
+}
+
+// Define Product type for profitability calculations at module scope
+type ProductProfitability = {
+  id: string;
+  name: string;
+  price: number | null;
+  cost: number | null;
+  landed_cost: number | null;
+  fba_fees: number | null;
+  profit_margin: number | null;
+  units_sold: number | null;
+  created_at: string;
+};
 
 export interface SavingsMetrics {
   totalSavings: number
@@ -77,11 +106,11 @@ export interface ComprehensiveAnalytics {
 
 export class MetricsCalculator {
   private supabase: any
-  private userId: string
+  private workspaceId: string // Renamed for clarity
 
-  constructor(userId: string) {
+  constructor(workspaceId: string) { // Renamed for clarity
     this.supabase = createDutyLeakServerClient()
-    this.userId = userId
+    this.workspaceId = workspaceId
   }
 
   async calculateSavingsMetrics(period: string = '30d'): Promise<SavingsMetrics> {
@@ -98,7 +127,7 @@ export class MetricsCalculator {
           price
         )
       `)
-      .eq('workspace_id', this.userId)
+      .eq('workspace_id', this.workspaceId) // Use renamed workspaceId
       .gte('created_at', dateRange.start)
       .lte('created_at', dateRange.end)
 
@@ -106,15 +135,15 @@ export class MetricsCalculator {
     const { data: dutyCalculations } = await this.supabase
       .from('duty_calculations')
       .select('*')
-      .eq('workspace_id', this.userId)
+      .eq('workspace_id', this.workspaceId) // Use renamed workspaceId
       .gte('created_at', dateRange.start)
 
     // Calculate total savings
-    const totalSavings = savingsData?.reduce((sum: number, item: any) => 
+    const totalSavings = (savingsData as SavingsLedgerItemWithProduct[] | null)?.reduce((sum: number, item: SavingsLedgerItemWithProduct) => 
       sum + (item.savings_amount || 0), 0) || 0
 
     // Calculate baseline costs for percentage
-    const baselineCosts = savingsData?.reduce((sum: number, item: any) => 
+    const baselineCosts = (savingsData as SavingsLedgerItemWithProduct[] | null)?.reduce((sum: number, item: SavingsLedgerItemWithProduct) => 
       sum + ((item.savings_amount || 0) / (item.savings_percentage || 1) * 100), 0) || 0
 
     const savingsPercentage = baselineCosts > 0 ? (totalSavings / baselineCosts) * 100 : 0
@@ -123,7 +152,7 @@ export class MetricsCalculator {
     const { data: products } = await this.supabase
       .from('products')
       .select('id')
-      .eq('user_id', this.userId)
+      .eq('workspace_id', this.workspaceId) // Assuming products are also scoped by workspaceId. If 'user_id' is correct, this needs to match the actual schema and intent.
 
     const totalProducts = products?.length || 0
     const optimizedProducts = savingsData?.length || 0
@@ -152,7 +181,7 @@ export class MetricsCalculator {
 
   async calculateProfitabilityMetrics(period: string = '30d'): Promise<ProfitabilityMetrics> {
     const dateRange = this.getDateRange(period)
-    
+        
     // Fetch products with cost data
     const { data: products } = await this.supabase
       .from('products')
@@ -167,18 +196,20 @@ export class MetricsCalculator {
         units_sold,
         created_at
       `)
-      .eq('user_id', this.userId)
+      .eq('workspace_id', this.workspaceId) // Assuming products are also scoped by workspaceId
       .gte('created_at', dateRange.start)
 
     if (!products) {
       return this.getEmptyProfitabilityMetrics()
     }
 
+    const typedProducts = products as ProductProfitability[];
+
     // Calculate revenue and costs
-    const totalRevenue = products.reduce((sum, product) => 
+    const totalRevenue = typedProducts.reduce((sum: number, product: ProductProfitability) => 
       sum + ((product.price || 0) * (product.units_sold || 1)), 0)
     
-    const totalCosts = products.reduce((sum, product) => 
+    const totalCosts = typedProducts.reduce((sum: number, product: ProductProfitability) => 
       sum + ((product.landed_cost || product.cost || 0) * (product.units_sold || 1)), 0)
     
     const grossProfit = totalRevenue - totalCosts
@@ -186,14 +217,14 @@ export class MetricsCalculator {
     const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0
     const roi = totalCosts > 0 ? (grossProfit / totalCosts) * 100 : 0
     
-    const totalOrders = products.reduce((sum, product) => sum + (product.units_sold || 1), 0)
+    const totalOrders = typedProducts.reduce((sum: number, product: ProductProfitability) => sum + (product.units_sold || 1), 0)
     const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
     // Calculate cost breakdown
-    const costBreakdown = this.calculateCostBreakdown(products)
+    const costBreakdown = this.calculateCostBreakdown(typedProducts)
 
     // Calculate profitability trend
-    const profitabilityTrend = this.calculateProfitabilityTrend(products, period)
+    const profitabilityTrend = this.calculateProfitabilityTrend(typedProducts, period)
 
     return {
       totalRevenue,
@@ -216,24 +247,25 @@ export class MetricsCalculator {
     const { data: classifications } = await this.supabase
       .from('classifications')
       .select('*')
-      .eq('workspace_id', this.userId)
+      .eq('workspace_id', this.workspaceId) // Use renamed workspaceId
       .gte('created_at', dateRange.start)
 
     // Fetch job logs for performance data
     const { data: jobLogs } = await this.supabase
       .from('job_logs')
       .select('*')
+      .eq('workspace_id', this.workspaceId) // Added workspaceId filter
       .gte('created_at', dateRange.start)
 
     // Calculate classification accuracy (based on confidence scores)
     const classificationAccuracy = classifications?.length > 0 
-      ? classifications.reduce((sum, item) => sum + (item.confidence_score || 0), 0) / classifications.length
+      ? classifications.reduce((sum: number, item: Record<string, any>) => sum + (item.confidence_score || 0), 0) / classifications.length
       : 0
 
     // Calculate average processing time from job logs
-    const completedJobs = jobLogs?.filter(log => log.status === 'completed') || []
+    const completedJobs = jobLogs?.filter((log: Record<string, any>) => log.status === 'completed') || []
     const averageProcessingTime = completedJobs.length > 0
-      ? completedJobs.reduce((sum, job) => {
+      ? completedJobs.reduce((sum: number, job: Record<string, any>) => {
           const start = new Date(job.created_at)
           const end = new Date(job.updated_at)
           return sum + (end.getTime() - start.getTime())
@@ -246,13 +278,13 @@ export class MetricsCalculator {
 
     // Calculate error rate
     const totalJobs = jobLogs?.length || 0
-    const failedJobs = jobLogs?.filter(log => log.status === 'failed').length || 0
+    const failedJobs = jobLogs?.filter((log: Record<string, any>) => log.status === 'failed').length || 0
     const errorRate = totalJobs > 0 ? (failedJobs / totalJobs) * 100 : 0
 
-    // Mock values for system metrics (would be from monitoring)
-    const systemUptime = 99.9
-    const apiResponseTime = 150 // ms
-    const userSatisfactionScore = 4.2 // out of 5
+    // Mock values for system metrics (would be from monitoring - requires external integration for real data)
+    const systemUptime = 99.9 // Example: Percentage, e.g., from a status page API
+    const apiResponseTime = 150 // Example: Milliseconds, e.g., average from API gateway logs
+    const userSatisfactionScore = 4.2 // Example: Score out of 5, e.g., from feedback surveys
 
     // Calculate performance trend
     const performanceTrend = this.calculatePerformanceTrend(classifications || [], jobLogs || [], period)
@@ -328,75 +360,140 @@ export class MetricsCalculator {
       data.count += 1
     })
 
-    return Array.from(monthlyData.entries()).map(([month, data]) => ({
+    return Array.from(monthlyData.entries()).map(([month, data]: [string, { savings: number; count: number }]) => ({
       month,
       savings: data.savings,
-      percentage: data.count > 0 ? (data.savings / data.count) : 0
+      percentage: data.count > 0 ? (data.savings / data.count) : 0 // This percentage might need re-evaluation based on definition
     }))
   }
 
-  private async getTopSavingsOpportunities() {
-    // This would analyze unoptimized products for potential savings
-    const { data: products } = await this.supabase
-      .from('products')
-      .select(`
-        id,
-        name,
-        price,
-        classifications(
-          duty_percentage,
-          hs6,
-          hs8
-        )
-      `)
-      .eq('user_id', this.userId)
-      .limit(10)
+  private async getTopSavingsOpportunities(limit: number = 5): Promise<SavingsMetrics['topSavingsOpportunities']> {
+    const optimizationEngine = new OptimizationEngine() // Use default options
 
-    return (products || []).map(product => ({
-      productId: product.id,
-      productName: product.name,
-      currentDuty: product.classifications?.[0]?.duty_percentage || 0,
-      optimizedDuty: 0, // Would calculate optimal duty rate
-      potentialSaving: 0, // Would calculate potential savings
-      savingPercentage: 0
-    }))
+    // Fetch products that might have optimization opportunities.
+    const { data: productsData, error: productsError } = await this.supabase
+      .from('products')
+      .select('id, name, cost') // cost is used by OptimizationEngine
+      .eq('workspace_id', this.workspaceId) // Assuming products are also scoped by workspaceId
+      .limit(50) // Consider a reasonable limit for performance
+
+    if (productsError || !productsData || productsData.length === 0) {
+      console.error('Error fetching products or no products found for savings opportunities:', productsError)
+      return []
+    }
+
+    const productIds = productsData.map((p: { id: string }) => p.id)
+    // Ensure product names in the map are always strings to prevent type issues.
+    const productNameMap = new Map(
+      productsData.map((p: { id: string; name: string | null }) => { // Changed 'any' to 'string | null'
+        return [p.id, p.name || 'Unnamed Product']; // If p.name is null or empty, use 'Unnamed Product'
+      })
+    );
+
+    const recommendations: OptimizationRecommendation[] = await optimizationEngine.generateRecommendations(productIds)
+    
+    type TopSavingsOpportunityItem = SavingsMetrics['topSavingsOpportunities'][0];
+
+    const allOpportunities: SavingsMetrics['topSavingsOpportunities'] = recommendations
+      .filter(rec => rec.type === 'classification' && rec.potentialSaving > 0 && rec.productId)
+      .map((rec: OptimizationRecommendation): TopSavingsOpportunityItem => {
+        const nameFromMap = productNameMap.get(rec.productId!); // string | undefined
+        return {
+          productId: rec.productId!,
+          productName: typeof nameFromMap === 'string' ? nameFromMap : 'Unknown Product', // Using ternary
+          currentDuty: rec.currentDutyRate,
+          optimizedDuty: rec.recommendedDutyRate,
+          potentialSaving: rec.potentialSaving,
+          savingPercentage: rec.savingPercentage,
+        };
+      })
+
+    // Sort by potential saving and return top N
+    return allOpportunities
+      .sort((a, b) => b.potentialSaving - a.potentialSaving)
+      .slice(0, limit)
   }
 
   private async calculatePotentialSavings(): Promise<number> {
-    // Calculate potential savings from unoptimized products
-    const { data: unoptimizedProducts } = await this.supabase
-      .from('products')
-      .select('price, cost')
-      .eq('user_id', this.userId)
-      .is('optimized', false)
+    const optimizationEngine = new OptimizationEngine({
+      // Consider using specific options if defaults are too slow or not sensitive enough
+      // maxRecommendations: 3, // Limit recommendations per product for this broad calculation
+      // confidenceThreshold: 0.5 // Lower threshold for "potential"
+    });
 
-    return (unoptimizedProducts || []).reduce((sum, product) => 
-      sum + ((product.price || 0) * 0.05), 0) // Assume 5% potential savings
+    // Fetch a sample of products. A more advanced version might specifically fetch "unoptimized" products.
+    const { data: productsData, error: productsError } = await this.supabase
+      .from('products')
+      .select('id, name, cost') // 'cost' is used as productValue by OptimizationEngine
+      .eq('workspace_id', this.workspaceId) // Assuming products are also scoped by workspaceId
+      .limit(100); // Sample size for estimation, adjust based on performance
+
+    if (productsError || !productsData || productsData.length === 0) {
+      console.error('Error fetching products for potential savings calculation:', productsError);
+      return 0;
+    }
+
+    const productIds = productsData.map((p: { id: string }) => p.id);
+    
+    let totalPotentialFromSample = 0;
+    try {
+      // Get all recommendations for this batch of products
+      const allRecommendations: OptimizationRecommendation[] = await optimizationEngine.generateRecommendations(productIds);
+
+      // Sum up potential savings from classification-type recommendations
+      totalPotentialFromSample = allRecommendations
+        .filter(rec => rec.type === 'classification' && rec.potentialSaving > 0)
+        .reduce((sum: number, rec: OptimizationRecommendation) => sum + rec.potentialSaving, 0);
+    } catch (engineError) {
+      console.error('Error running OptimizationEngine for potential savings:', engineError);
+      // Fallback to a simpler estimation if OptimizationEngine fails for the batch
+      return (productsData || []).reduce((sum: number, product: Record<string, any>) => 
+        sum + ((product.price || product.cost || 0) * 0.02), 0); // Fallback to 2% estimate
+    }
+    
+    // Note: This sum is for the sampled products. 
+    // Extrapolation to total product count could be done here if desired,
+    // but requires fetching total unoptimized product count and assuming sample is representative.
+    // For now, returning the sum for the sample provides a more grounded estimate than a flat percentage.
+    return totalPotentialFromSample;
   }
 
-  private calculateCostBreakdown(products: any[]) {
-    const totalCosts = products.reduce((sum, product) => 
-      sum + ((product.landed_cost || product.cost || 0) * (product.units_sold || 1)), 0)
+  private calculateCostBreakdown(products: ProductProfitability[]) { // Used ProductProfitability type
+    const totalProductCost = products.reduce((sum: number, p: ProductProfitability) => sum + ((p.cost || 0) * (p.units_sold || 1)), 0);
+    const totalFbaFees = products.reduce((sum: number, p: ProductProfitability) => sum + ((p.fba_fees || 0) * (p.units_sold || 1)), 0);
+    
+    const totalOtherImportCosts = products.reduce((sum: number, p: ProductProfitability) => {
+      const productLandedCost = p.landed_cost || p.cost || 0;
+      const productBaseCost = p.cost || 0;
+      const productFbaFees = p.fba_fees || 0;
+      const units = p.units_sold || 1;
+      const otherCostsForProduct = productLandedCost - productBaseCost - productFbaFees;
+      return sum + (Math.max(0, otherCostsForProduct) * units);
+    }, 0);
+
+    const grandTotalCalculatedCosts = totalProductCost + totalFbaFees + totalOtherImportCosts;
+
+    // If grandTotalCalculatedCosts is zero (e.g. all costs are null/zero), prevent division by zero
+    const safeTotalCosts = grandTotalCalculatedCosts > 0 ? grandTotalCalculatedCosts : 1;
 
     const categories = {
-      'Product Cost': products.reduce((sum, p) => sum + ((p.cost || 0) * (p.units_sold || 1)), 0),
-      'Shipping': products.reduce((sum, p) => sum + ((p.shipping_cost || 0) * (p.units_sold || 1)), 0),
-      'Duties & Taxes': products.reduce((sum, p) => sum + ((p.customs_duties || 0) * (p.units_sold || 1)), 0),
-      'FBA Fees': products.reduce((sum, p) => sum + ((p.fba_fees || 0) * (p.units_sold || 1)), 0)
-    }
+      'Product Cost': totalProductCost,
+      'FBA Fees': totalFbaFees,
+      'Shipping & Duties': totalOtherImportCosts, // Combined category
+    };
 
     return Object.entries(categories).map(([category, amount]) => ({
       category,
-      amount,
-      percentage: totalCosts > 0 ? (amount / totalCosts) * 100 : 0
-    }))
+      amount: amount as number,
+      percentage: (amount / safeTotalCosts) * 100
+    }));
   }
 
-  private calculateProfitabilityTrend(products: any[], period: string) {
+  private calculateProfitabilityTrend(products: ProductProfitability[], period: string) { // Used ProductProfitability type
     // Group products by time period for trend analysis
     const periodData = new Map()
     
-    products.forEach(product => {
+    products.forEach((product: ProductProfitability) => {
       const date = new Date(product.created_at)
       const periodKey = period === '7d' 
         ? date.toISOString().split('T')[0] // Daily
@@ -426,24 +523,24 @@ export class MetricsCalculator {
 
   private calculatePerformanceTrend(classifications: any[], jobLogs: any[], period: string) {
     // Calculate daily performance metrics
-    const dailyData = new Map()
+    const dailyData = new Map<string, { accuracy: number[], processingTime: number[], throughput: number }>()
     
-    classifications.forEach(item => {
+    classifications.forEach((item: any) => {
       const date = new Date(item.created_at).toISOString().split('T')[0]
       
       if (!dailyData.has(date)) {
         dailyData.set(date, { accuracy: [], processingTime: [], throughput: 0 })
       }
       
-      const data = dailyData.get(date)
+      const data = dailyData.get(date)! // Assert data is not undefined
       data.accuracy.push(item.confidence_score || 0)
       data.throughput += 1
     })
 
     return Array.from(dailyData.entries()).map(([date, data]) => ({
       date,
-      accuracy: data.accuracy.length > 0 ? data.accuracy.reduce((a, b) => a + b) / data.accuracy.length : 0,
-      processingTime: 150, // Mock value
+      accuracy: data.accuracy.length > 0 ? data.accuracy.reduce((a: number, b: number) => a + b, 0) / data.accuracy.length : 0,
+      processingTime: 150, // Mock value, actual processing time for classifications might be complex to get here
       throughput: data.throughput
     }))
   }

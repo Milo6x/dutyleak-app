@@ -230,10 +230,13 @@ function generateProfitabilityRecommendations(profitability: any) {
   }
   
   // Analyze cost breakdown for recommendations
-  const highestCost = profitability.costBreakdown.reduce((max, item) => 
-    item.percentage > max.percentage ? item : max, { percentage: 0 })
+  const highestCost = profitability.costBreakdown.reduce(
+    (max: { category: string; amount: number; percentage: number }, item: { category: string; amount: number; percentage: number }) =>
+      item.percentage > max.percentage ? item : max, 
+    { category: '', amount: 0, percentage: 0 } // Initial value for reduce
+  );
   
-  if (highestCost.percentage > 40) {
+  if (highestCost.percentage > 40 && highestCost.category) { // ensure category is not empty
     recommendations.push({
       priority: 'medium',
       category: 'cost_optimization',
@@ -341,26 +344,148 @@ function getCostOptimizationActions(category: string, percentage: number) {
     ]
   }
   
-  return actions[category] || ['Review and optimize this cost category']
+  return actions[category as keyof typeof actions] || ['Review and optimize this cost category'];
 }
 
-function convertToCSV(data: any): string {
-  // Simplified CSV conversion - would be more comprehensive in production
-  const headers = ['Metric', 'Value', 'Period', 'Generated At']
-  const rows = []
-  
-  // Add executive summary data
-  if (data.executiveSummary) {
-    Object.entries(data.executiveSummary).forEach(([key, value]) => {
-      if (typeof value === 'number') {
-        rows.push([key, value, data.metadata.period, data.metadata.generatedAt])
+// Helper to escape CSV values (handles commas, quotes, newlines)
+function escapeCsvValue(value: any): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  const strValue = String(value);
+  if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+    return `"${strValue.replace(/"/g, '""')}"`;
+  }
+  return strValue;
+}
+
+function objectToCsvRows(obj: Record<string, any>, prefix = ''): string[][] {
+  const rows: string[][] = [];
+  for (const [key, value] of Object.entries(obj)) {
+    const currentKey = prefix ? `${prefix}_${key}` : key;
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      rows.push(...objectToCsvRows(value, currentKey));
+    } else if (Array.isArray(value)) {
+      // Handle simple arrays by joining them, complex arrays might need specific handling
+      rows.push([escapeCsvValue(currentKey), escapeCsvValue(value.join('; '))]);
+    } else {
+      rows.push([escapeCsvValue(currentKey), escapeCsvValue(value)]);
+    }
+  }
+  return rows;
+}
+
+function arrayToCsvSection(title: string, dataArray: Record<string, any>[]): string {
+  if (!dataArray || dataArray.length === 0) {
+    return `${escapeCsvValue(title)}\nNo data available for this section.\n\n`;
+  }
+  // Ensure all objects have the same keys for consistent CSV columns, filter out complex objects/arrays from headers
+  const allKeys = new Set<string>();
+  dataArray.forEach(item => {
+    Object.keys(item).forEach(key => {
+      if (typeof item[key] !== 'object' || item[key] === null) { // Only include primitive types in headers
+        allKeys.add(key);
       }
-    })
+    });
+  });
+  const headers = Array.from(allKeys);
+
+  const headerRow = headers.map(escapeCsvValue).join(',');
+  const valueRows = dataArray.map(obj =>
+    headers.map(header => escapeCsvValue(obj[header])).join(',')
+  );
+  return `${escapeCsvValue(title)}\n${headerRow}\n${valueRows.join('\n')}\n\n`;
+}
+
+// Added missing objectToCsvSection function
+function objectToCsvSection(title: string, dataObject: Record<string, any>): string {
+  if (!dataObject || Object.keys(dataObject).length === 0) {
+    return `${escapeCsvValue(title)}\nNo data available for this section.\n\n`;
+  }
+  const rows = Object.entries(dataObject)
+    .filter(([key, value]) => typeof value !== 'object' || value === null) // Filter out nested objects/arrays for simple K-V section
+    .map(([key, value]) => 
+      `${escapeCsvValue(key)},${escapeCsvValue(value)}`
+    );
+  if (rows.length === 0) return `${escapeCsvValue(title)}\nNo simple data available for this section.\n\n`;
+  return `${escapeCsvValue(title)}\nKey,Value\n${rows.join('\n')}\n\n`;
+}
+
+function convertToCSV(report: any): string {
+  let csvString = '';
+
+  // Metadata
+  csvString += "Report Metadata\n";
+  if (report.metadata) {
+    csvString += objectToCsvRows(report.metadata).map(row => row.join(',')).join('\n') + '\n\n';
+  }
+
+  // Executive Summary
+  if (report.executiveSummary) {
+    csvString += "Executive Summary\n";
+    csvString += objectToCsvRows(report.executiveSummary).map(row => row.join(',')).join('\n') + '\n\n';
+  }
+
+  // Detailed sections based on report type
+  const reportType = report.metadata?.reportType || 'comprehensive';
+
+  if (reportType === 'comprehensive' || reportType === 'savings') {
+    if (report.savingsAnalysis) {
+      csvString += arrayToCsvSection("Savings Analysis - Monthly Trend", report.savingsAnalysis.monthlyTrend);
+      csvString += arrayToCsvSection("Savings Analysis - Top Opportunities", report.savingsAnalysis.topSavingsOpportunities);
+      // Add other savings metrics if they are simple key-value pairs
+      const simpleSavingsMetrics = { ...report.savingsAnalysis };
+      delete simpleSavingsMetrics.monthlyTrend;
+      delete simpleSavingsMetrics.topSavingsOpportunities;
+      csvString += objectToCsvSection("Savings Analysis - Overview", simpleSavingsMetrics);
+    }
+  }
+
+  if (reportType === 'comprehensive' || reportType === 'profitability') {
+    if (report.profitabilityAnalysis) {
+      csvString += arrayToCsvSection("Profitability Analysis - Cost Breakdown", report.profitabilityAnalysis.costBreakdown);
+      csvString += arrayToCsvSection("Profitability Analysis - Trend", report.profitabilityAnalysis.profitabilityTrend);
+      const simpleProfitabilityMetrics = { ...report.profitabilityAnalysis };
+      delete simpleProfitabilityMetrics.costBreakdown;
+      delete simpleProfitabilityMetrics.profitabilityTrend;
+      csvString += objectToCsvSection("Profitability Analysis - Overview", simpleProfitabilityMetrics);
+    }
+     if (report.costAnalysis && report.costAnalysis.breakdown) { // For specific profitability report
+        csvString += arrayToCsvSection("Cost Analysis - Breakdown", report.costAnalysis.breakdown);
+    }
+  }
+
+  if (reportType === 'comprehensive' || reportType === 'performance') {
+    if (report.performanceAnalysis) {
+      csvString += arrayToCsvSection("Performance Analysis - Trend", report.performanceAnalysis.performanceTrend);
+      const simplePerformanceMetrics = { ...report.performanceAnalysis };
+      delete simplePerformanceMetrics.performanceTrend;
+      csvString += objectToCsvSection("Performance Analysis - Overview", simplePerformanceMetrics);
+    }
+     if (report.systemHealth) { // For specific performance report
+        csvString += objectToCsvSection("System Health", report.systemHealth);
+    }
   }
   
-  // Convert to CSV format
-  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
-  return csvContent
+  // Recommendations and Action Items (might need more specific formatting)
+  if (report.recommendations) {
+     if (Array.isArray(report.recommendations) && report.recommendations.every((item: any) => typeof item === 'object')) {
+        csvString += arrayToCsvSection("Recommendations", report.recommendations);
+     } else if (Array.isArray(report.recommendations)) { // Simple array of strings
+        csvString += "Recommendations\n" + report.recommendations.map((r: string) => escapeCsvValue(r)).join('\n') + '\n\n';
+     }
+  }
+  if (report.strategicRecommendations) {
+    csvString += arrayToCsvSection("Strategic Recommendations", report.strategicRecommendations.flatMap((sr: any) => sr.actions.map((action: string) => ({timeframe: sr.timeframe, title: sr.title, action})) ));
+  }
+  if (report.actionItems) {
+    csvString += "Action Items\n" + report.actionItems.map((item: string) => escapeCsvValue(item)).join('\n') + '\n\n';
+  }
+   if (report.nextSteps) {
+    csvString += "Next Steps\n" + report.nextSteps.map((item: string) => escapeCsvValue(item)).join('\n') + '\n\n';
+  }
+
+  return csvString;
 }
 
 export async function POST(request: NextRequest) {
@@ -398,9 +523,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      jobId: job.id,
-      message: 'Report generation scheduled',
-      estimatedCompletion: '2-5 minutes'
+      jobId: job?.id || 'unknown', // Handle potentially null job
+      message: job ? 'Report generation scheduled' : 'Report scheduling failed, job data unavailable',
+      estimatedCompletion: job ? '2-5 minutes' : 'N/A'
     })
 
   } catch (error) {

@@ -415,5 +415,170 @@ export const withErrorHandling = <T extends any[], R>(
   }
 }
 
+/**
+ * Check if error is retryable based on error code and context
+ */
+export const isRetryableError = (error: AppError): boolean => {
+  const retryableCodes = [
+    'NETWORK_ERROR',
+    'TIMEOUT_ERROR',
+    'CONNECTION_FAILURE',
+    'TOO_MANY_CONNECTIONS',
+    'SERVICE_UNAVAILABLE',
+    'RATE_LIMIT_EXCEEDED'
+  ]
+  
+  return retryableCodes.includes(error.code)
+}
+
+/**
+ * Get error severity level as number for comparison
+ */
+export const getSeverityLevel = (severity: AppError['severity']): number => {
+  const levels = {
+    low: 1,
+    medium: 2,
+    high: 3,
+    critical: 4
+  }
+  return levels[severity]
+}
+
+/**
+ * Filter errors by severity level
+ */
+export const getErrorsBySeverity = (errors: AppError[], minSeverity: AppError['severity'] = 'low'): AppError[] => {
+  const minLevel = getSeverityLevel(minSeverity)
+  return errors.filter(error => 
+    getSeverityLevel(error.severity) >= minLevel
+  )
+}
+
+/**
+ * Get errors by component
+ */
+export const getErrorsByComponent = (errors: AppError[], component: string): AppError[] => {
+  return errors.filter(error => 
+    error.context?.component === component
+  )
+}
+
+/**
+ * Get errors by time range
+ */
+export const getErrorsByTimeRange = (errors: AppError[], startTime: Date, endTime: Date): AppError[] => {
+  return errors.filter(error => {
+    const errorTime = new Date(error.timestamp)
+    return errorTime >= startTime && errorTime <= endTime
+  })
+}
+
+/**
+ * Get error statistics
+ */
+export const getErrorStats = (errors: AppError[]) => {
+  const stats = {
+    total: errors.length,
+    bySeverity: {
+      low: 0,
+      medium: 0,
+      high: 0,
+      critical: 0
+    },
+    byComponent: {} as Record<string, number>,
+    byErrorCode: {} as Record<string, number>,
+    recentErrors: errors.slice(-10), // Last 10 errors
+    errorRate: 0 // Errors per hour
+  }
+
+  errors.forEach(error => {
+    // Count by severity
+    stats.bySeverity[error.severity]++
+
+    // Count by component
+    const component = error.context?.component || 'unknown'
+    stats.byComponent[component] = (stats.byComponent[component] || 0) + 1
+
+    // Count by error code
+    if (error.code) {
+      stats.byErrorCode[error.code] = (stats.byErrorCode[error.code] || 0) + 1
+    }
+  })
+
+  // Calculate error rate (errors per hour) for last 24 hours
+  const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const recentErrors = errors.filter(error => new Date(error.timestamp) >= last24Hours)
+  stats.errorRate = recentErrors.length / 24
+
+  return stats
+}
+
+/**
+ * Check if error rate is above threshold
+ */
+export const isErrorRateHigh = (errors: AppError[], threshold: number = 10): boolean => {
+  const stats = getErrorStats(errors)
+  return stats.errorRate > threshold
+}
+
+/**
+ * Get top error patterns
+ */
+export const getTopErrorPatterns = (errors: AppError[], limit: number = 5) => {
+  const patterns = {} as Record<string, { count: number; lastSeen: string; severity: AppError['severity'] }>
+
+  errors.forEach(error => {
+    const key = error.code || error.message.substring(0, 100)
+    if (!patterns[key]) {
+      patterns[key] = {
+        count: 0,
+        lastSeen: error.timestamp.toISOString(),
+        severity: error.severity
+      }
+    }
+    patterns[key].count++
+    if (new Date(error.timestamp) > new Date(patterns[key].lastSeen)) {
+      patterns[key].lastSeen = error.timestamp.toISOString()
+    }
+  })
+
+  return Object.entries(patterns)
+    .sort(([, a], [, b]) => b.count - a.count)
+    .slice(0, limit)
+    .map(([pattern, data]) => ({ pattern, ...data }))
+}
+
+/**
+ * Generate error summary report
+ */
+export const generateErrorReport = (errors: AppError[]) => {
+  const stats = getErrorStats(errors)
+  const topPatterns = getTopErrorPatterns(errors)
+  const criticalErrors = errors.filter(error => error.severity === 'critical')
+
+  return {
+    summary: {
+      totalErrors: stats.total,
+      errorRate: stats.errorRate,
+      criticalCount: criticalErrors.length,
+      isHighErrorRate: isErrorRateHigh(errors)
+    },
+    breakdown: {
+      bySeverity: stats.bySeverity,
+      byComponent: stats.byComponent,
+      topPatterns
+    },
+    alerts: {
+      criticalErrors: criticalErrors.slice(-5), // Last 5 critical errors
+      highErrorRate: isErrorRateHigh(errors),
+      newErrorPatterns: topPatterns.filter(p => {
+        const lastSeen = new Date(p.lastSeen)
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+        return lastSeen >= oneHourAgo
+      })
+    }
+  }
+}
+
 export default errorHandler
 export { ErrorHandler }

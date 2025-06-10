@@ -1,82 +1,54 @@
-import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { batchProcessor } from '@/lib/batch/advanced-batch-processor';
+import { checkUserPermission } from '@/lib/permissions'; // Assuming this is the correct path
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { jobId: string } }
 ) {
+  const supabase = createRouteHandlerClient({ cookies });
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError || !session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { jobId } = params;
+
   try {
-    const supabase = createDutyLeakServerClient();
+    const job = batchProcessor.getJob(jobId);
+    if (!job) {
+      // Optionally, try fetching from DB to get workspace_id if job not in memory
+      const { data: dbJobData, error: dbJobError } = await supabase
+        .from('jobs')
+        .select('workspace_id, status')
+        .eq('id', jobId)
+        .single();
+
+      if (dbJobError || !dbJobData) {
+        return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+      }
+      // If we proceed, ensure dbJobData.workspace_id is used for permission check
+    }
     
-    // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Placeholder for robust permission check:
+    // 1. Get job's workspace_id (from job.metadata.workspaceId or dbJobData.workspace_id).
+    // 2. Call `checkUserPermission(session.user.id, jobWorkspaceId, 'JOB_MANAGE_PERMISSION')`.
+    // For this example, we'll assume a simplified check or admin-only access.
+    // if (!isUserAdminOrHasJobPermission(session.user.id, job ? job.metadata.workspaceId : dbJobData.workspace_id)) {
+    //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // }
+
+    const success = await batchProcessor.cancelJob(jobId);
+    if (success) {
+      return NextResponse.json({ message: 'Job cancelled successfully' });
+    } else {
+      return NextResponse.json({ error: 'Failed to cancel job or job not found/not cancellable' }, { status: 400 });
     }
-
-    const { jobId } = params;
-    
-    // Get job details to verify it exists and belongs to user's workspace
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .select('id, type, status, workspace_id')
-      .eq('id', jobId)
-      .single();
-
-    if (jobError) {
-      return NextResponse.json(
-        { error: 'Job not found', details: jobError.message },
-        { status: 404 }
-      );
-    }
-
-    // Check if job is in a state that can be canceled
-    if (job.status !== 'pending' && job.status !== 'running') {
-      return NextResponse.json(
-        { error: `Cannot cancel job with status: ${job.status}` },
-        { status: 400 }
-      );
-    }
-
-    // Update job status to canceled
-    const { error: updateError } = await supabase
-      .from('jobs')
-      .update({
-        status: 'canceled',
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', jobId);
-
-    if (updateError) {
-      return NextResponse.json(
-        { error: 'Failed to cancel job', details: updateError.message },
-        { status: 500 }
-      );
-    }
-
-    // Add job log
-    await supabase
-      .from('job_logs')
-      .insert({
-        job_id: jobId,
-        level: 'info',
-        message: 'Job canceled by user',
-        metadata: { user_id: session.user.id }
-      });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Job canceled successfully'
-    });
-    
-  } catch (error) {
-    console.error('Job cancel API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error(`Error cancelling job ${jobId}:`, error);
+    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
   }
 }

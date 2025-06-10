@@ -1,7 +1,8 @@
 import { createDutyLeakServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizationEngine } from '@/lib/duty/optimization-engine';
-import { JobProcessor } from '@/lib/jobs/job-processor';
+// import { JobProcessor } from '@/lib/jobs/job-processor'; // No longer used directly
+import { batchProcessor, BatchJob } from '@/lib/batch/advanced-batch-processor'; // Import AdvancedBatchProcessor
 import { getWorkspaceAccess, checkUserPermission } from '@/lib/permissions';
 
 export async function POST(req: NextRequest) {
@@ -20,7 +21,8 @@ export async function POST(req: NextRequest) {
       categoryId,
       minPotentialSaving,
       confidenceThreshold = 0.7,
-      runInBackground = false
+      runInBackground = false,
+      priority = 'medium' // Added priority parsing
     } = body;
 
     // Validate optimization type
@@ -75,53 +77,58 @@ export async function POST(req: NextRequest) {
 
     // If running in background or bulk operation, create a job
     if (runInBackground || type === 'bulk_optimization' || productsToAnalyze.length > 5) {
-      const jobType = type === 'duty_calculation' ? 'bulk_fba_calculation' : 'duty_optimization';
-      
-      // Create background job
-      const { data: job, error: jobError } = await supabase
-        .from('jobs')
-        .insert({
-          workspace_id: workspace_id,
-          type: jobType,
-          status: 'pending',
-          progress: 0,
-          parameters: {
-            productIds: productsToAnalyze,
-            optimizationType: type,
-            minPotentialSaving,
-            confidenceThreshold
+      const jobTypeForProcessor = type === 'duty_calculation' ? 'fba_calculation' : 'duty_optimization';
+      // Note: 'duty_optimization' needs to be a valid BatchJob['type'] handled by AdvancedBatchProcessor.
+      // If not, this will fail or need mapping. Assuming it will be added.
+
+      const jobMetadataForProcessor: BatchJob['metadata'] = {
+        productIds: productsToAnalyze,
+        parameters: { // Store original request parameters and any other context
+          originalRequestType: type,
+          minPotentialSaving,
+          confidenceThreshold,
+          userId: user.id
+        },
+        workspaceId: workspace_id,
+      };
+
+      try {
+        const jobId = await batchProcessor.addJob(
+          jobTypeForProcessor as BatchJob['type'], // Cast, assuming 'duty_optimization' will be valid
+          jobMetadataForProcessor,
+          priority as BatchJob['priority']
+        );
+
+        if (!jobId) {
+          throw new Error('AdvancedBatchProcessor.addJob did not return a jobId');
+        }
+
+        const jobDetails = batchProcessor.getJob(jobId);
+        if (!jobDetails) {
+          throw new Error(`Job ${jobId} not found in AdvancedBatchProcessor after creation.`);
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: 'Optimization job added to queue.',
+          job: {
+            id: jobDetails.id,
+            type: jobDetails.type,
+            status: jobDetails.status,
+            priority: jobDetails.priority,
+            progress: jobDetails.progress.percentage,
+            createdAt: jobDetails.timestamps.created.toISOString(),
           }
-        })
-        .select('id, type, status, progress, created_at, parameters')
-        .single();
+        });
 
-      if (jobError) {
-         return NextResponse.json(
-           { error: 'Failed to create optimization job', details: jobError.message },
-           { status: 500 }
-         );
-       }
-
-       // Start job processing in background
-       const jobProcessor = new JobProcessor();
-       jobProcessor.processJob(job.id, jobType, job.parameters as any, supabase)
-         .catch(error => {
-           console.error(`Background optimization job ${job.id} failed:`, error);
-         });
-
-       return NextResponse.json({
-         success: true,
-         jobId: job.id,
-         message: 'Optimization job started in background',
-         job: {
-           id: job.id,
-           type: job.type,
-           status: job.status,
-           progress: job.progress,
-           createdAt: job.created_at
-         }
-       });
-     }
+      } catch (e: any) {
+        console.error('Failed to create optimization job via AdvancedBatchProcessor:', e.message);
+        return NextResponse.json(
+          { error: 'Failed to create optimization job', details: e.message },
+          { status: 500 }
+        );
+      }
+    }
 
      // For immediate processing (small datasets)
      const optimizationEngine = new OptimizationEngine();
@@ -263,7 +270,7 @@ async function startOptimizationJob(
       .from('jobs')
       .update({
         status: 'failed',
-        error: error.message || 'Unknown error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Unknown error',
         completed_at: new Date().toISOString()
       })
       .eq('id', jobId);
@@ -274,7 +281,7 @@ async function startOptimizationJob(
         job_id: jobId,
         level: 'error',
         message: 'Optimization analysis failed',
-        metadata: { error: error.message || 'Unknown error' }
+        metadata: { error: (error instanceof Error ? error.message : String(error)) || 'Unknown error' }
       });
   }
 }

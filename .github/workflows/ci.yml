@@ -68,7 +68,7 @@ jobs:
   build:
     name: Build Application
     runs-on: ubuntu-latest
-    needs: [test, security]
+    needs: [test, security] # Build depends on unit/lint tests and security scans
     
     steps:
     - name: Checkout code
@@ -100,10 +100,84 @@ jobs:
           package.json
           
   # Deploy to staging
+  e2e-test:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: build # E2E tests run after a successful build
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-files
+        path: . # Download to current directory to reconstruct build output
+
+    - name: Start application for E2E tests
+      run: npm start & # Start in background
+      env:
+        NODE_ENV: production # Run against production build
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} # Use appropriate secrets for test/staging DB
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        # Add other necessary runtime environment variables for your application
+
+    - name: Wait for application to start
+      run: npx wait-on http://localhost:3000 -t 60000 # Wait for 60s
+
+    - name: Run Playwright E2E tests
+      run: npx playwright test
+      env:
+        PLAYWRIGHT_BASE_URL: http://localhost:3000 # Ensure Playwright config uses this or it's set here
+        # Add any other env vars specific to Playwright tests if needed
+
+    - name: Install Lighthouse CI
+      run: npm install -g @lhci/cli@0.13.x # Install specific version or use latest
+
+    - name: Run Lighthouse CI
+      run: lhci autorun
+      env:
+        LHCI_SERVER_BASE_URL: ${{ secrets.LHCI_SERVER_BASE_URL }} # Optional: if using a persistent LHCI server
+        LHCI_TOKEN: ${{ secrets.LHCI_TOKEN }} # Optional: token for uploading to LHCI server
+        # LHCI autorun will use .lighthouserc.js by default
+
+    - name: OWASP ZAP Baseline Scan
+      uses: zaproxy/action-baseline@v0.10.0 # Check for latest stable version
+      with:
+        target: 'http://localhost:3000' # Target the locally running application
+        # docker_name: 'owasp/zap2docker-stable' # Specify ZAP Docker image if needed
+        rules_file_name: '.zap/rules.tsv' # Optional: Path to a ZAP rules file to ignore certain alerts
+        cmd_options: '-J zap_report.json -T 60' # Generate JSON report, max scan duration 60 mins
+        # fail_action: false # Default is false. Set to true to fail workflow on any ZAP alert.
+        #                  Consider using a rules file to ignore acceptable risks before enabling this.
+        # token: ${{ secrets.GITHUB_TOKEN }} # To create GitHub issues for alerts (optional)
+        # issue_title: 'OWASP ZAP Baseline Scan Alerts'
+        # allow_issue_writing: false # Set to true if you want ZAP to create issues
+
+    - name: Upload ZAP Report
+      if: always() # Upload report even if ZAP scan fails or finds issues
+      uses: actions/upload-artifact@v3
+      with:
+        name: zap-scan-report
+        path: zap_report.json # Path to the generated ZAP report
+
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    needs: build
+    needs: e2e-test # Deploy to staging only after E2E tests pass
     if: github.ref == 'refs/heads/develop'
     environment: staging
     
@@ -128,7 +202,7 @@ jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: build
+    needs: e2e-test # Deploy to production only after E2E tests pass
     if: github.ref == 'refs/heads/main'
     environment: production
     

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react' // Added useCallback
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -26,8 +26,10 @@ import {
   Activity,
   Users,
   Package,
-  Zap
+  Zap,
+  BarChart // For router navigation, if needed, or use Link
 } from 'lucide-react'
+import { useRouter } from 'next/navigation' // Added for navigation
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -73,7 +75,7 @@ interface DashboardData {
     optimizedProducts: number
     totalProducts: number
     monthlyTrend: Array<{ month: string; savings: number; percentage: number }>
-    topOpportunities: Array<{ product: string; potential: number; category: string }>
+    topSavingsOpportunities: Array<{ productId: string; productName: string; currentDuty: number; optimizedDuty: number; potentialSaving: number; savingPercentage: number }>
   }
   profitability: {
     totalRevenue: number
@@ -164,6 +166,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
 }
 
 const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ className }) => {
+  const router = useRouter() // Initialize router
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -171,11 +174,7 @@ const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ classNa
   const [activeTab, setActiveTab] = useState('overview')
   const [exporting, setExporting] = useState(false)
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [period])
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -192,7 +191,20 @@ const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ classNa
     } finally {
       setLoading(false)
     }
-  }
+  }, [period, setLoading, setError, setData]); // Added dependencies for useCallback
+
+  // useEffect for initial fetch and polling
+  useEffect(() => {
+    const POLLING_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    fetchDashboardData(); // Initial fetch when component mounts or fetchDashboardData changes
+
+    const intervalId = setInterval(() => {
+      console.log('Polling for comprehensive dashboard data...');
+      fetchDashboardData();
+    }, POLLING_INTERVAL);
+
+    return () => clearInterval(intervalId); // Cleanup on unmount
+  }, [fetchDashboardData]); // Dependency is the memoized fetchDashboardData
 
   const handleExport = async (format: 'json' | 'csv' | 'pdf') => {
     try {
@@ -470,42 +482,19 @@ const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ classNa
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
+                  {/* "View Detailed Reports" button removed as it's redundant on the /analytics page itself */}
                   <Button 
                     className="w-full justify-start" 
                     variant="outline"
                     onClick={() => {
-                      toast.success('Opening detailed reports...')
-                      // TODO: Implement detailed reports functionality
-                      console.log('View detailed reports')
-                    }}
-                  >
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    View Detailed Reports
-                  </Button>
-                  <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
-                    onClick={() => {
-                      toast.success('Opening product optimization...')
-                      // TODO: Implement product optimization functionality
-                      console.log('Optimize products')
+                      toast.info('Navigating to products page...')
+                      router.push('/products')
                     }}
                   >
                     <Zap className="h-4 w-4 mr-2" />
                     Optimize Products
                   </Button>
-                  <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
-                    onClick={() => {
-                      toast.success('Exporting dashboard data...')
-                      // TODO: Implement data export functionality
-                      console.log('Export dashboard data')
-                    }}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export Data
-                  </Button>
+                  {/* Removed redundant Export Data button from Quick Actions */}
                 </div>
               </CardContent>
             </Card>
@@ -574,17 +563,21 @@ const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ classNa
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {data.savings.topOpportunities.slice(0, 5).map((opportunity, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-sm">{opportunity.product}</p>
-                        <p className="text-xs text-gray-600">{opportunity.category}</p>
+                  {data.savings.topSavingsOpportunities && data.savings.topSavingsOpportunities.length > 0 ? (
+                    data.savings.topSavingsOpportunities.slice(0, 5).map((opportunity, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="font-medium text-sm">{opportunity.productName}</p>
+                          <p className="text-xs text-gray-600">Current: ${opportunity.currentDuty.toFixed(2)} → Optimized: ${opportunity.optimizedDuty.toFixed(2)}</p>
+                        </div>
+                        <Badge variant="secondary">
+                          ${opportunity.potentialSaving.toLocaleString()}
+                        </Badge>
                       </div>
-                      <Badge variant="secondary">
-                        ${opportunity.potential.toLocaleString()}
-                      </Badge>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No savings opportunities available</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

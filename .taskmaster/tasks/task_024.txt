@@ -1,6 +1,6 @@
 # Task ID: 24
 # Title: Phase 4: Conduct Performance Testing and Optimization
-# Status: pending
+# Status: done
 # Dependencies: 23
 # Priority: medium
 # Description: Perform performance tests (Lighthouse CI, API response times) and optimize code/infrastructure based on results.
@@ -8,4 +8,24 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Set Up Lighthouse CI [done]
+### Dependencies: None
+### Description: Integrate Lighthouse CI into GitHub Actions workflow (.github/workflows/ci.yml) for automated performance audits on key pages (dashboard, product list, analytics). Configure report uploads or performance budget assertions.
+### Details:
+
+
+## 2. Profile API Endpoint Performance [done]
+### Dependencies: None
+### Description: Identify critical API endpoints and baseline their response times using tools like Postman/curl or simple scripts. Document findings for optimization.
+### Details:
+
+
+## 3. Analyze Performance Reports & Identify Bottlenecks [done]
+### Dependencies: None
+### Description: Review Lighthouse CI reports and API baseline data. Identify bottlenecks (slow pages/APIs, large assets, inefficient queries) and prioritize for optimization. Document findings.
+### Details:
+
 

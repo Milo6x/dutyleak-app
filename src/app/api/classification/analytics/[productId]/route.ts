@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
+import { checkUserPermission } from '@/lib/permissions' // Added import
 
 export async function GET(
   request: NextRequest,
@@ -17,23 +18,29 @@ export async function GET(
 
     const { productId } = params
 
-    // Verify user has access to this product
-    const { data: product, error: productError } = await supabase
+    // Verify user has access to this product's workspace
+    const { data: productDetails, error: productError } = await supabase
       .from('products')
-      .select('id, name')
+      .select('id, name, workspace_id') // Fetch workspace_id
       .eq('id', productId)
-      .eq('user_id', user.id)
       .single()
 
-    if (productError || !product) {
+    if (productError || !productDetails) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
+    
+    // Check user permission for the product's workspace
+    const { hasPermission } = await checkUserPermission(user.id, productDetails.workspace_id, 'DATA_VIEW');
+    if (!hasPermission) {
+        return NextResponse.json({ error: 'Access to product analytics denied' }, { status: 403 });
+    }
 
-    // Get classification history for analytics
+    // Get classification history for analytics from job_logs metadata
     const { data: history, error: historyError } = await supabase
       .from('job_logs')
       .select('*')
-      .eq('classification_data->>product_id', productId)
+      // Assuming productId is stored in metadata as product_id
+      .eq('metadata->>product_id', productId) 
       .order('created_at', { ascending: false })
 
     if (historyError) {
@@ -73,17 +80,18 @@ function calculateAnalytics(logs: any[]) {
   // Basic metrics
   const totalClassifications = logs.length
   
-  // Calculate accuracy rate (simplified - based on confidence scores)
+  // Calculate accuracy rate (simplified - based on confidence scores from metadata)
   const confidenceScores = logs
-    .map(log => log.classification_data?.confidence_score)
+    .map(log => log.metadata?.confidence) // Access confidence from metadata
     .filter(score => typeof score === 'number')
   
   const averageConfidence = confidenceScores.length > 0
-    ? confidenceScores.reduce((sum, score) => sum + score, 0) / confidenceScores.length * 100
+    ? confidenceScores.reduce((sum, score) => sum + score, 0) / confidenceScores.length // Assuming confidence is 0-1 scale
     : 0
   
   // Accuracy rate estimation (high confidence classifications as "accurate")
-  const highConfidenceCount = confidenceScores.filter(score => score >= 0.8).length
+  // Assuming confidence in metadata is 0-1, so 0.8 is 80%
+  const highConfidenceCount = confidenceScores.filter(score => score >= 0.8).length 
   const accuracyRate = confidenceScores.length > 0
     ? (highConfidenceCount / confidenceScores.length) * 100
     : 0
@@ -91,7 +99,7 @@ function calculateAnalytics(logs: any[]) {
   // Source breakdown
   const sourceBreakdown: Record<string, number> = {}
   logs.forEach(log => {
-    const source = log.classification_data?.source || 'unknown'
+    const source = log.metadata?.source || 'unknown' // Access source from metadata
     sourceBreakdown[source] = (sourceBreakdown[source] || 0) + 1
   })
 
@@ -120,7 +128,7 @@ function calculateAnalytics(logs: any[]) {
     }
     timelineMap[date].count++
     
-    const confidence = log.classification_data?.confidence_score
+    const confidence = log.metadata?.confidence // Access confidence from metadata
     if (typeof confidence === 'number') {
       timelineMap[date].confidenceSum += confidence
       timelineMap[date].confidenceCount++
@@ -132,7 +140,7 @@ function calculateAnalytics(logs: any[]) {
       date,
       count: data.count,
       avgConfidence: data.confidenceCount > 0 
-        ? (data.confidenceSum / data.confidenceCount) * 100 
+        ? (data.confidenceSum / data.confidenceCount) * 100 // Display as percentage
         : 0
     }))
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -141,12 +149,16 @@ function calculateAnalytics(logs: any[]) {
   const userActivityMap: Record<string, { count: number; lastActivity: string; userName?: string }> = {}
   
   logs.forEach(log => {
-    const userId = log.user_id
+    const userId = log.metadata?.user_id || log.user_id // Prefer user_id from metadata if available
+    if (!userId) return; // Skip if no user_id
+
     if (!userActivityMap[userId]) {
       userActivityMap[userId] = {
         count: 0,
         lastActivity: log.created_at,
-        userName: log.classification_data?.user_name || undefined
+        // Assuming user_name might be in metadata, or fallback if not.
+        // This part might need adjustment based on actual profile data structure if joining with profiles.
+        userName: log.metadata?.user_name || 'Unknown User' 
       }
     }
     userActivityMap[userId].count++

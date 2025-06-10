@@ -22,8 +22,13 @@ export async function GET(
 
     const { user, workspace_id } = workspaceAccess
 
+    if (!workspace_id) {
+      console.error('Workspace ID is undefined after successful workspace access check');
+      return NextResponse.json({ error: 'Internal server error: Workspace ID missing' }, { status: 500 });
+    }
+
     // Check if user has permission to read products
-    const hasPermission = await checkUserPermission(
+    const { hasPermission } = await checkUserPermission( // Destructure hasPermission directly
       user.id,
       workspace_id,
       'DATA_VIEW'
@@ -87,8 +92,13 @@ export async function PUT(
 
     const { user, workspace_id } = workspaceAccess
 
+    if (!workspace_id) {
+      console.error('Workspace ID is undefined after successful workspace access check');
+      return NextResponse.json({ error: 'Internal server error: Workspace ID missing' }, { status: 500 });
+    }
+
     // Check if user has permission to write products
-    const hasPermission = await checkUserPermission(
+    const { hasPermission } = await checkUserPermission( // Destructure hasPermission directly
       user.id,
       workspace_id,
       'DATA_UPDATE'
@@ -106,6 +116,10 @@ export async function PUT(
     // Remove id from updates to prevent conflicts
     const { id, ...productUpdates } = updates
     
+    // Fetch current product state for audit logging comparison (optional, can be intensive)
+    // For simplicity, we'll log the fact of update and fields attempted to change.
+    // More advanced audit would log old/new values.
+
     const { data: product, error } = await supabase
       .from('products')
       .update({
@@ -118,6 +132,13 @@ export async function PUT(
       .single()
     
     if (error) {
+      // Log failed update attempt
+      await supabase.from('job_logs').insert({
+        job_id: `product_update_fail_${params.id}_${Date.now()}`,
+        level: 'error',
+        message: `User ${user.id} failed to update product ${params.id}.`,
+        metadata: { user_id: user.id, workspace_id, product_id: params.id, error: error.message, updates_attempted: productUpdates }
+      });
       if (error.code === 'PGRST116') {
         return NextResponse.json(
           { error: 'Product not found' },
@@ -161,8 +182,13 @@ export async function DELETE(
 
     const { user, workspace_id } = workspaceAccess
 
+    if (!workspace_id) {
+      console.error('Workspace ID is undefined after successful workspace access check');
+      return NextResponse.json({ error: 'Internal server error: Workspace ID missing' }, { status: 500 });
+    }
+
     // Check if user has permission to delete products
-    const hasPermission = await checkUserPermission(
+    const { hasPermission } = await checkUserPermission( // Destructure hasPermission directly
       user.id,
       workspace_id,
       'DATA_DELETE'
@@ -182,12 +208,27 @@ export async function DELETE(
       .eq('workspace_id', workspace_id)
     
     if (error) {
+      // Log failed delete attempt
+      await supabase.from('job_logs').insert({
+        job_id: `product_delete_fail_${params.id}_${Date.now()}`,
+        level: 'error',
+        message: `User ${user.id} failed to delete product ${params.id}.`,
+        metadata: { user_id: user.id, workspace_id, product_id: params.id, error: error.message }
+      });
       console.error('Product deletion error:', error)
       return NextResponse.json(
         { error: 'Failed to delete product' },
         { status: 500 }
       )
     }
+
+    // Log successful delete
+    await supabase.from('job_logs').insert({
+      job_id: `product_delete_success_${params.id}_${Date.now()}`,
+      level: 'info',
+      message: `User ${user.id} successfully deleted product ${params.id}.`,
+      metadata: { user_id: user.id, workspace_id, product_id: params.id }
+    });
     
     return NextResponse.json({ success: true })
     

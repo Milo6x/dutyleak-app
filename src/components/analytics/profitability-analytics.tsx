@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react' // Added useCallback
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -151,12 +151,9 @@ export function ProfitabilityAnalytics({
   const [timePeriod, setTimePeriod] = useState('30d')
   const [selectedMetric, setSelectedMetric] = useState('profit')
   const [activeTab, setActiveTab] = useState('overview')
+  const [exporting, setExporting] = useState(false)
 
-  useEffect(() => {
-    fetchAnalyticsData()
-  }, [timePeriod, dateRange, productFilter])
-
-  const fetchAnalyticsData = async () => {
+  const fetchAnalyticsData = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
@@ -182,7 +179,20 @@ export function ProfitabilityAnalytics({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [timePeriod, dateRange, productFilter, setIsLoading, setError, setData]); // Added dependencies
+
+  // useEffect for initial fetch and polling
+  useEffect(() => {
+    const POLLING_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    fetchAnalyticsData(); // Initial fetch
+
+    const intervalId = setInterval(() => {
+      console.log('Polling for profitability analytics data...');
+      fetchAnalyticsData();
+    }, POLLING_INTERVAL);
+
+    return () => clearInterval(intervalId); // Cleanup on unmount
+  }, [fetchAnalyticsData]); // Dependency is the memoized fetchAnalyticsData
 
   const generateMockData = (): ProfitabilityData => {
     // Generate trend data
@@ -295,47 +305,70 @@ export function ProfitabilityAnalytics({
     }
   }
 
-  const exportData = () => {
-    if (!data) {return}
-
-    const exportData = {
-      overview: data.overview,
-      trends: data.trends,
-      productAnalysis: data.productAnalysis,
-      generatedAt: new Date().toISOString(),
-      period: timePeriod
+  const handleExport = async (format: 'json' | 'csv' | 'pdf') => {
+    if (!data) {
+      toast.error('No data available to export.')
+      return
     }
+    setExporting(true)
+    setError(null) // Clear previous errors
 
-    onDataExport?.(exportData)
+    try {
+      const params = new URLSearchParams({
+        type: 'profitability',
+        period: timePeriod,
+        format,
+        ...(dateRange && { startDate: dateRange.start, endDate: dateRange.end }),
+        ...(productFilter && { products: productFilter.join(',') })
+      })
 
-    // Also download as CSV
-    const csvContent = [
-      ['Metric', 'Value'].join(','),
-      ['Total Revenue', data.overview.totalRevenue.toFixed(2)].join(','),
-      ['Total Costs', data.overview.totalCosts.toFixed(2)].join(','),
-      ['Gross Profit', data.overview.grossProfit.toFixed(2)].join(','),
-      ['Net Profit', data.overview.netProfit.toFixed(2)].join(','),
-      ['Profit Margin', `${data.overview.profitMargin.toFixed(1)}%`].join(','),
-      ['ROI', `${data.overview.roi.toFixed(1)}%`].join(','),
-      '',
-      ['Product Analysis'].join(','),
-      ['Product', 'Revenue', 'Costs', 'Profit', 'Margin %'].join(','),
-      ...data.productAnalysis.map(p => [
-        p.productName,
-        p.revenue.toFixed(2),
-        p.costs.toFixed(2),
-        p.profit.toFixed(2),
-        p.margin.toFixed(1)
-      ].join(','))
-    ].join('\n')
+      const response = await fetch(`/api/analytics/export?${params.toString()}`)
 
-    const blob = new Blob([csvContent], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `profitability-analytics-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Export failed with status ${response.status}`)
+      }
+
+      if (format === 'json') {
+        const jsonData = await response.json()
+        const blob = new Blob([JSON.stringify(jsonData.data, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `profitability_analytics_${timePeriod}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success('JSON export successful!')
+      } else if (format === 'csv') {
+        const csvData = await response.text()
+        const blob = new Blob([csvData], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `profitability_analytics_${timePeriod}.csv`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success('CSV export successful!')
+      } else if (format === 'pdf') {
+        const pdfResult = await response.json()
+        if (pdfResult.success && pdfResult.downloadUrl) {
+          window.open(pdfResult.downloadUrl, '_blank')
+          toast.success('PDF generation started!')
+        } else {
+          throw new Error(pdfResult.error || 'PDF generation failed to start.')
+        }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during export.'
+      setError(errorMessage)
+      toast.error(`Export failed: ${errorMessage}`)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -421,14 +454,19 @@ export function ProfitabilityAnalytics({
               <RefreshCw className="h-4 w-4 mr-1" />
               Refresh
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportData}
+            <Select 
+              onValueChange={(value) => handleExport(value as 'json' | 'csv' | 'pdf')}
+              disabled={exporting || isLoading}
             >
-              <Download className="h-4 w-4 mr-1" />
-              Export
-            </Button>
+              <SelectTrigger className="w-[110px]" disabled={exporting || isLoading}>
+                <SelectValue placeholder="Export" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="json">JSON</SelectItem>
+                <SelectItem value="csv">CSV</SelectItem>
+                <SelectItem value="pdf">PDF</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardTitle>
         <CardDescription>

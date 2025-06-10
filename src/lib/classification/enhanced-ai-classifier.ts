@@ -496,16 +496,75 @@ class EnhancedAIClassifier {
    * Zonos API classification (placeholder)
    */
   private async classifyWithZonos(request: EnhancedClassificationRequest): Promise<EnhancedClassificationResult | null> {
-    // Implementation would integrate with actual Zonos API
-    return null
+    // Mock implementation - replace with actual Zonos API integration
+    console.log(`Mock classifyWithZonos called for: ${request.productDescription.substring(0,30)}...`);
+    // Simulate a delay and a possible null response or a basic result
+    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
+    if (Math.random() < 0.3) return null; // Simulate occasional failure
+
+    return {
+      hsCode: '999999', // Placeholder Zonos HS Code
+      confidence: 65,
+      description: 'Mock classification from Zonos API',
+      reasoning: 'Based on Zonos API mock lookup (fictional).',
+      source: 'zonos',
+      alternativeCodes: [],
+      alternatives: [],
+      validationResult: {} as ValidationResult, // Placeholder, will be filled later
+      businessDecision: {} as ClassificationDecision, // Placeholder
+      complianceResult: {} as ComplianceResult, // Placeholder
+      confidenceAssessment: {} as ConfidenceAssessment, // Placeholder
+      thresholdResults: [], // Placeholder
+      validationResults: { formatValid: true, categoryMatch: true, countryCompliant: true, warnings: [] }, // Basic valid placeholder
+      processingTime: 100,
+      modelVersion: 'zonos-mock-v1',
+      metadata: {
+        model: 'zonos-mock-v1',
+        processingTime: 100,
+        tokensUsed: 0, // Mock, no actual tokens
+        cost: 0, // Mock
+        validationScore: 0, // Placeholder
+        businessRuleScore: 0, // Placeholder
+        finalDecision: 'review-required' // Default mock decision
+      }
+    }
   }
 
   /**
    * Customs database classification (placeholder)
    */
   private async classifyWithCustoms(request: EnhancedClassificationRequest): Promise<EnhancedClassificationResult | null> {
-    // Implementation would integrate with customs database
-    return null
+    // Mock implementation - replace with actual customs database integration
+    console.log(`Mock classifyWithCustoms called for: ${request.productDescription.substring(0,30)}...`);
+    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate DB lookup delay
+    if (Math.random() < 0.1) return null; // Simulate occasional failure
+
+    return {
+      hsCode: '000000', // Placeholder Customs DB HS Code
+      confidence: 90, // Typically higher confidence from direct DB lookup
+      description: 'Mock classification from Customs Database',
+      reasoning: 'Direct match found in mock Customs Database.',
+      source: 'customs',
+      alternativeCodes: [],
+      alternatives: [],
+      validationResult: {} as ValidationResult, // Placeholder
+      businessDecision: {} as ClassificationDecision, // Placeholder
+      complianceResult: {} as ComplianceResult, // Placeholder
+      confidenceAssessment: {} as ConfidenceAssessment, // Placeholder
+      thresholdResults: [], // Placeholder
+      validationResults: { formatValid: true, categoryMatch: true, countryCompliant: true, warnings: [] }, // Basic valid placeholder
+      processingTime: 50,
+      modelVersion: 'customs-db-mock-v1',
+      metadata: {
+        model: 'customs-db-mock-v1',
+        processingTime: 50,
+        tokensUsed: 0,
+        cost: 0,
+        validationScore: 0,
+        businessRuleScore: 0,
+        finalDecision: 'approved' // Default mock decision
+      }
+    }
   }
 
   /**

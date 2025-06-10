@@ -55,21 +55,23 @@ export async function POST(request: NextRequest) {
 
     // If ASIN lookup failed or no ASIN, calculate using dimensions
     if (fbaFee === 0) {
+      // Product table does not have unit columns. Assume stored dimensions are in inches and weight in pounds.
+      // Use request-provided units if available, otherwise default to in/lb.
       const productOptions = {
         dimensions: {
           length: dimensions?.length || product.dimensions_length || 0,
           width: dimensions?.width || product.dimensions_width || 0,
           height: dimensions?.height || product.dimensions_height || 0,
-          unit: 'in' as const
+          unit: dimensions?.unit || ('in' as 'in' | 'cm')
         },
         weight: {
-          value: weight || product.weight || 0,
-          unit: 'lb' as const
+          value: weight?.value || product.weight || 0,
+          unit: weight?.unit || ('lb' as 'lb' | 'oz' | 'kg' | 'g')
         },
         category: category || product.category || 'Other'
-      }
+      };
 
-      const result = calculator.calculate(productOptions)
+      const result = calculator.calculate(productOptions);
       fbaFee = result.fbaFee
     }
 

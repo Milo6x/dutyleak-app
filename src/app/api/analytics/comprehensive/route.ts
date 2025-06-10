@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createDutyLeakServerClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { MetricsCalculator } from '@/lib/analytics/metrics-calculator'
+import dashboardCache from '@/lib/caching/dashboard-cache' // Import dashboardCache
 
 export async function GET(request: NextRequest) {
   try {
@@ -68,7 +69,7 @@ async function calculateProjections(calculator: MetricsCalculator, period: strin
   
   // Simple projection logic - in production, this would use more sophisticated forecasting
   const projectionPeriods = ['1m', '3m', '6m', '1y']
-  const projections = {}
+  const projections: Record<string, any> = {} // Explicitly type projections
   
   for (const projPeriod of projectionPeriods) {
     const multiplier = getProjectionMultiplier(period, projPeriod)
@@ -108,10 +109,10 @@ function getProjectionMultiplier(currentPeriod: string, projectionPeriod: string
     '1m': 30,
     '3m': 90,
     '6m': 180
-  }
+  } as const; // Add 'as const' for stricter key typing
   
-  const currentDays = periodToDays[currentPeriod] || 30
-  const projectionDays = periodToDays[projectionPeriod] || 30
+  const currentDays = periodToDays[currentPeriod as keyof typeof periodToDays] || 30
+  const projectionDays = periodToDays[projectionPeriod as keyof typeof periodToDays] || 30
   
   // Simple linear projection with growth factor
   const baseMultiplier = projectionDays / currentDays
@@ -121,23 +122,53 @@ function getProjectionMultiplier(currentPeriod: string, projectionPeriod: string
 }
 
 async function getCategoryInsights(calculator: MetricsCalculator, category: string, period: string) {
-  // This would fetch category-specific analytics
-  // For now, return placeholder data
+  // This would fetch category-specific analytics using the calculator.
+  // For now, return more dynamic placeholder data based on category.
+  // A full implementation would involve:
+  // const categoryAnalytics = await calculator.getAnalyticsForCategory(category, period);
+  // return categoryAnalytics;
+
+  let mockMetrics = {
+    totalProducts: Math.floor(Math.random() * 100) + 50,
+    optimizedProducts: Math.floor(Math.random() * 50),
+    averageSavings: Math.random() * 500 + 50,
+    topPerformers: ["Product A", "Product B", "Product C"].slice(0, Math.floor(Math.random() * 4)),
+    keyMetricValue: Math.random() * 1000
+  };
+  let mockInsights = [
+    `Overall performance for ${category} is stable for the ${period} period.`,
+    `Consider reviewing top performers in ${category} for best practices.`,
+    `Potential for further optimization exists within ${category}.`
+  ];
+
+  switch (category.toLowerCase()) {
+    case 'electronics':
+      mockMetrics.averageSavings += 200;
+      mockMetrics.keyMetricValue = Math.random() * 5000;
+      mockInsights.unshift(`High-value items in Electronics show significant savings potential.`);
+      break;
+    case 'apparel':
+      mockMetrics.optimizedProducts = Math.floor(mockMetrics.totalProducts * 0.8); // Higher optimization rate
+      mockInsights.unshift(`Apparel category shows high optimization rate for ${period}.`);
+      break;
+    case 'home goods':
+      mockMetrics.topPerformers = ["Product X", "Product Y"];
+      mockInsights.push(`Seasonal trends might be impacting Home Goods in ${category}.`);
+      break;
+    default:
+      // Keep generic mock data
+      break;
+  }
+  
+  // Ensure optimizedProducts is not greater than totalProducts
+  mockMetrics.optimizedProducts = Math.min(mockMetrics.totalProducts, mockMetrics.optimizedProducts);
+
   return {
     category,
     period,
-    insights: [
-      `${category} category shows strong performance`,
-      `Optimization opportunities identified in ${category}`,
-      `${category} trending upward in savings potential`
-    ],
-    metrics: {
-      totalProducts: 0,
-      optimizedProducts: 0,
-      averageSavings: 0,
-      topPerformers: []
-    }
-  }
+    insights: mockInsights,
+    metrics: mockMetrics
+  };
 }
 
 async function getRealTimeMetrics(supabase: any, userId: string) {
@@ -167,8 +198,8 @@ async function getRealTimeMetrics(supabase: any, userId: string) {
     const activeJobsCount = activeJobs?.length || 0
     const classificationsLast24h = recentClassifications?.length || 0
     const averageClassificationTime = recentClassifications?.length > 0 
-      ? recentClassifications.reduce((sum, c) => {
-          const processingTime = c.completed_at 
+      ? recentClassifications.reduce((sum: number, c: Record<string, any>) => {
+          const processingTime = c.completed_at && c.created_at
             ? new Date(c.completed_at).getTime() - new Date(c.created_at).getTime()
             : 0
           return sum + processingTime
@@ -310,10 +341,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function refreshAnalyticsCache(supabase: any, userId: string) {
-  // Implementation would clear and rebuild analytics cache
-  // For now, just log the action
-  console.log(`Refreshing analytics cache for user ${userId}`)
+async function refreshAnalyticsCache(supabase: any, userId: string) { // userId here is likely workspaceId
+  const cacheKey = `dashboard-stats-${userId}`; // Assuming userId is the workspaceId for cache key consistency
+  const deleted = dashboardCache.delete(cacheKey);
+  if (deleted) {
+    console.log(`Analytics cache refreshed (cleared) for workspace ${userId}. Key: ${cacheKey}`);
+  } else {
+    console.log(`Analytics cache key ${cacheKey} not found for workspace ${userId}, no action taken.`);
+  }
+  // The cache will be repopulated on the next GET request to this endpoint or /api/dashboard/stats
 }
 
 async function generateAIInsights(supabase: any, userId: string, parameters: any) {

@@ -206,9 +206,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             if (process.env.NODE_ENV === 'development') {
               console.log('Auth state change:', event, !!session?.user)
             }
-            
+            setUser(session?.user || null); // Update user state on any auth event
+
             if (event === 'SIGNED_OUT') {
-              router.push('/auth/login')
+              setProfile(null); // Clear profile and workspace on sign out
+              setWorkspace(null);
+              router.push('/auth/login');
+            } else if (event === 'SIGNED_IN' && session?.user) {
+              // If user signs in (e.g., in another tab) or session is restored
+              // Fetch their data. Avoid re-fetching if user ID hasn't changed
+              // from a previously loaded user, unless profile is null.
+              // Also check current user state to avoid re-fetch if already set by initialLoad
+              if (user?.id !== session.user.id || !profile) {
+                fetchData(session.user.id);
+                fetchNotifications();
+              }
             }
           }
         );
@@ -216,24 +228,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         subscription = authSubscription;
 
         // Check initial user
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        const { data: { user: initialUser }, error: userError } = await supabase.auth.getUser();
 
         if (userError) {
           console.error('Error getting user:', userError);
           if (isMounted) {
-            setUser(null)
-            setProfile(null)
-            setWorkspace(null)
+            setUser(null);
+            setProfile(null);
+            setWorkspace(null);
             setLoading(false);
             router.push('/auth/login');
           }
           return;
         }
 
-        if (user && isMounted) {
-          setUser(user);
+        if (initialUser && isMounted) {
+          setUser(initialUser);
           try {
-            await fetchData(user.id);
+            await fetchData(initialUser.id);
             await fetchNotifications(); // Fetch notifications for initial user
             if (isMounted) {
               setLoading(false);
@@ -246,7 +258,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               // Don't redirect on data fetch error, user is authenticated
             }
           }
-        } else if (isMounted) {
+        } else if (isMounted) { // No initial user
+          setUser(null);
+          setProfile(null);
+          setWorkspace(null);
           setLoading(false);
           router.push('/auth/login');
         }
@@ -457,7 +472,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       <AvatarFallback>
                         {(profile?.full_name || user?.email || '')
                           .split(' ')
-                          .map(word => word[0])
+                          .map((word: string) => word[0])
                           .join('')
                           .toUpperCase()
                           .slice(0, 2)}

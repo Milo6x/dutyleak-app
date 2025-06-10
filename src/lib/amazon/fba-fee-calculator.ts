@@ -1,17 +1,23 @@
+// Define and export dimension and weight types
+export interface ProductDimensions {
+  length: number;
+  width: number;
+  height: number;
+  unit: 'in' | 'cm';
+}
+
+export interface Weight {
+  value: number;
+  unit: 'lb' | 'oz' | 'kg' | 'g';
+}
+
 export interface FbaFeeCalculatorOptions {
-  dimensions?: {
-    length: number;
-    width: number;
-    height: number;
-    unit: 'in' | 'cm';
-  };
-  weight?: {
-    value: number;
-    unit: 'lb' | 'oz' | 'kg' | 'g';
-  };
+  dimensions?: ProductDimensions;
+  weight?: Weight;
   category?: string;
   asin?: string;
-  tier?: 'standard' | 'oversize' | 'special';
+  tier?: 'standard' | 'oversize' | 'special'; // This is the determined tier, not an input option usually
+  price?: number; // Added for referral fee calculation if needed by calculateOtherFees
 }
 
 export interface FbaFeeResult {
@@ -64,7 +70,7 @@ export class FbaFeeCalculator {
   /**
    * Normalize dimensions to inches
    */
-  private normalizeDimensions(dimensions?: { length: number; width: number; height: number; unit: 'in' | 'cm' }) {
+  private normalizeDimensions(dimensions?: ProductDimensions) {
     if (!dimensions) {
       return { length: 0, width: 0, height: 0 };
     }
@@ -87,7 +93,7 @@ export class FbaFeeCalculator {
   /**
    * Normalize weight to pounds
    */
-  private normalizeWeight(weight?: { value: number; unit: 'lb' | 'oz' | 'kg' | 'g' }) {
+  private normalizeWeight(weight?: Weight) {
     if (!weight) {
       return 0;
     }

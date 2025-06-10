@@ -1,6 +1,6 @@
 # Task ID: 26
 # Title: Phase 5: Plan and Set up Staging/Production Environments, CI/CD, Monitoring, Logging
-# Status: pending
+# Status: done
 # Dependencies: 23, 24, 25
 # Priority: medium
 # Description: Plan deployment strategy, set up staging and production environments, implement CI/CD pipeline, and configure monitoring/logging/alerting.
@@ -8,4 +8,18 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Document Deployment Strategy & Environment Setup [done]
+### Dependencies: None
+### Description: Create DEPLOYMENT_GUIDE.md detailing branching strategy, CI/CD flow, env var management (GitHub secrets for Vercel/Supabase), and Vercel/Supabase environment structure.
+### Details:
+
+
+## 2. Plan Monitoring, Logging, and Alerting Strategy [done]
+### Dependencies: None
+### Description: Develop plan for monitoring, logging, alerting. Evaluate Vercel/Supabase tools, identify needs for others (Sentry, Logtail). Document strategy, tools, metrics, logs, alerts in MONITORING_LOGGING_ALERTING_PLAN.md.
+### Details:
+
 

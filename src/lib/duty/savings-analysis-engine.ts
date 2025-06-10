@@ -1,7 +1,6 @@
 import { createBrowserClient } from '../supabase'
 import { OptimizationEngine, OptimizationRecommendation, OptimizationAnalysis } from './optimization-engine'
 import { ScenarioEngine, ScenarioEngineOptions, ScenarioResult } from './scenario-engine'
-import { LandedCostCalculator } from './landed-cost-calculator'
 import { EnhancedDutyEngine, DutyCalculationRequest } from './enhanced-duty-engine'
 
 export interface SavingsAnalysisOptions {
@@ -16,20 +15,6 @@ export interface SavingsAnalysisOptions {
   maxScenarios?: number
 }
 
-export interface ProductSavingsScenario {
-  id: string
-  name: string
-  description: string
-  productId: string
-  baselineCalculation: LandedCostBreakdown
-  optimizedCalculation: LandedCostBreakdown
-  savingsBreakdown: SavingsBreakdown
-  implementationRequirements: ImplementationRequirement[]
-  riskAssessment: RiskAssessment
-  timeToImplement: string
-  confidence: number
-}
-
 export interface LandedCostBreakdown {
   productValue: number
   dutyAmount: number
@@ -41,6 +26,10 @@ export interface LandedCostBreakdown {
   totalLandedCost: number
   profitMargin?: number
   sellingPrice?: number
+  destinationCountry?: string;
+  originCountry?: string;
+  shippingMethod?: string;
+  hsCode?: string;
 }
 
 export interface SavingsBreakdown {
@@ -69,6 +58,25 @@ export interface RiskAssessment {
   marketRisk: 'low' | 'medium' | 'high'
   overallRisk: 'low' | 'medium' | 'high'
   mitigationStrategies: string[]
+  risk_factors: { 
+    factor: string
+    severity: 'low' | 'medium' | 'high'
+    probability: number
+    impact: string
+  }[]
+}
+export interface ProductSavingsScenario {
+  id: string
+  name: string
+  description: string
+  productId: string
+  baselineCalculation: LandedCostBreakdown 
+  optimizedCalculation: LandedCostBreakdown
+  savingsBreakdown: SavingsBreakdown
+  implementationRequirements: ImplementationRequirement[]
+  riskAssessment: RiskAssessment
+  timeToImplement: string
+  confidence: number
 }
 
 export interface BatchSavingsAnalysis {
@@ -115,11 +123,11 @@ export interface ScenarioComparisonOptions {
     fbaOptimizations?: boolean
   }
   analysisDepth: 'basic' | 'comprehensive' | 'exhaustive'
-  timeHorizon: number // months
+  timeHorizon: number 
 }
 
 export interface MultiScenarioComparison {
-  baselineScenario: ScenarioResult
+  baselineScenario: ScenarioResult 
   alternativeScenarios: ScenarioResult[]
   bestScenario: ScenarioResult
   worstScenario: ScenarioResult
@@ -135,6 +143,21 @@ export interface SavingsMatrix {
   byClassification: { [hsCode: string]: number }
   byTradeAgreement: { [agreement: string]: number }
 }
+
+type DetailedCalculationResult = {
+  dutyPercentage: number;
+  vatPercentage: number;
+  dutyAmount: number;
+  vatAmount: number;
+  totalTaxes: number;
+  totalLandedCost: number;
+  hsCode: string;
+  originCountry: string;
+  destinationCountry: string;
+  shippingMethod: string;
+  productValue: number;
+};
+
 
 export class SavingsAnalysisEngine {
   private supabase = createBrowserClient()
@@ -166,36 +189,26 @@ export class SavingsAnalysisEngine {
     this.scenarioEngine = new ScenarioEngine()
     this.dutyEngine = new EnhancedDutyEngine({
       useExternalAPIs: true,
-      includeOptimization: true,
+      includeOptimization: true, 
       includeCompliance: true
     })
   }
 
-  /**
-   * Analyze a batch of products with configuration options
-   */
   async analyzeBatch(
     products: any[],
     configuration?: any
   ): Promise<BatchSavingsAnalysis> {
-    // Extract product IDs from product objects
     const productIds = products.map(product => 
       typeof product === 'string' ? product : product.id || product.product_id
-    )
-    
-    // Use the existing analyzeBatchSavings method
-    return this.analyzeBatchSavings(productIds)
+    );
+    return this.analyzeBatchSavings(productIds);
   }
 
-  /**
-   * Perform comprehensive savings analysis for a batch of products
-   */
   async analyzeBatchSavings(productIds: string[]): Promise<BatchSavingsAnalysis> {
     const scenarios: ProductSavingsScenario[] = []
     let totalCurrentCost = 0
     let totalOptimizedCost = 0
 
-    // Process products in parallel with concurrency limit
     const concurrencyLimit = 5
     const chunks = this.chunkArray(productIds, concurrencyLimit)
 
@@ -206,7 +219,6 @@ export class SavingsAnalysisEngine {
       scenarios.push(...chunkResults.filter(Boolean) as ProductSavingsScenario[])
     }
 
-    // Calculate totals
     scenarios.forEach(scenario => {
       totalCurrentCost += scenario.baselineCalculation.totalLandedCost
       totalOptimizedCost += scenario.optimizedCalculation.totalLandedCost
@@ -218,7 +230,6 @@ export class SavingsAnalysisEngine {
       ? scenarios.reduce((sum, s) => sum + s.savingsBreakdown.roi, 0) / scenarios.length 
       : 0
 
-    // Generate summary and recommendations
     const summary = this.generateSummary(scenarios)
     const recommendations = this.generatePortfolioRecommendations(scenarios)
 
@@ -235,41 +246,37 @@ export class SavingsAnalysisEngine {
     }
   }
 
-  /**
-   * Analyze savings opportunities for a single product
-   */
   async analyzeProductSavings(productId: string): Promise<ProductSavingsScenario | null> {
     try {
-      // Get product details
-      const { data: product } = await this.supabase
+      const { data: productData } = await this.supabase
         .from('products')
-        .select('*')
+        .select('id, title, cost, weight, active_classification_id, yearly_units, origin_country, fba_fee_estimate_usd')
         .eq('id', productId)
         .single()
 
-      if (!product) {return null}
+      if (!productData) { return null }
+      const product = productData as any; 
 
-      // Get current classification
-      const { data: currentClassification } = await this.supabase
+      if (!product.active_classification_id) {
+        console.warn(`Product ${productId} has no active classification.`);
+        return null;
+      }
+      const { data: classificationData } = await this.supabase
         .from('classifications')
-        .select('*')
-        .eq('product_id', productId)
-        .eq('is_active', true)
+        .select('id, classification_code') 
+        .eq('id', product.active_classification_id)
         .single()
 
-      if (!currentClassification) {return null}
+      if (!classificationData) { return null }
+      const currentClassification = classificationData as any;
 
-      // Calculate baseline landed cost
       const baselineCalculation = await this.calculateLandedCost(product, currentClassification)
-
-      // Get optimization recommendations
       const optimizationAnalysis = await this.optimizationEngine.generateOptimizationAnalysis([productId])
       
       if (optimizationAnalysis.recommendations.length === 0) {
-        return null
+        return null; 
       }
 
-      // Find best optimization scenario
       const bestRecommendation = optimizationAnalysis.recommendations[0]
       const optimizedCalculation = await this.calculateOptimizedLandedCost(
         product, 
@@ -277,22 +284,18 @@ export class SavingsAnalysisEngine {
         bestRecommendation
       )
 
-      // Calculate savings breakdown
       const savingsBreakdown = this.calculateSavingsBreakdown(
         baselineCalculation,
         optimizedCalculation,
-1000 // Default yearly units
+        product.yearly_units || 1000 
       )
 
-      // Generate implementation requirements
       const implementationRequirements = this.generateImplementationRequirements(bestRecommendation)
-
-      // Assess risks
       const riskAssessment = this.assessRisks(bestRecommendation, product)
 
       return {
         id: `savings_${productId}_${Date.now()}`,
-        name: `Savings Analysis for ${product.title}`,
+        name: `Savings Analysis for ${product.title || 'Unknown Product'}`,
         description: bestRecommendation.description,
         productId,
         baselineCalculation,
@@ -309,91 +312,121 @@ export class SavingsAnalysisEngine {
     }
   }
 
-  /**
-   * Compare multiple scenarios for a set of products
-   */
   async compareMultipleScenarios(options: ScenarioComparisonOptions): Promise<MultiScenarioComparison> {
     const scenarios: ScenarioResult[] = []
     const savingsMatrix: SavingsMatrix = {
-      byShippingMethod: {},
-      byOriginCountry: {},
-      byDestinationCountry: {},
-      byClassification: {},
-      byTradeAgreement: {}
+      byShippingMethod: {}, byOriginCountry: {}, byDestinationCountry: {},
+      byClassification: {}, byTradeAgreement: {}
     }
+    
+    const primaryProductId = options.productIds[0];
+    if (!primaryProductId) throw new Error("Product ID is required for scenario comparison.");
 
-    // Generate baseline scenario
-    const baselineScenario = await this.generateBaselineScenario(options.productIds[0])
-    scenarios.push(baselineScenario)
+    const { data: productData } = await this.supabase
+      .from('products')
+      .select('yearly_units, origin_country') 
+      .eq('id', primaryProductId)
+      .single();
+      
+    const product = productData as any; 
+    if (!product) throw new Error(`Product data for ${primaryProductId} not found.`);
+    
+    const yearlyUnits = product.yearly_units || 1000;
+    const productOriginCountry = product.origin_country || 'CN'; 
 
-    // Generate alternative scenarios based on variations
+    const baselineDetailedCalc = await this.generateScenarioCalculation(primaryProductId, { 
+      destinationCountry: 'US', 
+      originCountry: productOriginCountry 
+    });
+
+    const baselineScenarioForReturn: ScenarioResult = {
+      baseDutyAmount: baselineDetailedCalc.dutyAmount,
+      alternativeDutyAmount: baselineDetailedCalc.dutyAmount,
+      potentialSaving: 0,
+      potentialYearlySaving: 0,
+      baseBreakdown: {
+        dutyPercentage: baselineDetailedCalc.dutyPercentage,
+        vatPercentage: baselineDetailedCalc.vatPercentage,
+        dutyAmount: baselineDetailedCalc.dutyAmount,
+        vatAmount: baselineDetailedCalc.vatAmount,
+        totalTaxes: baselineDetailedCalc.totalTaxes,
+      },
+      alternativeBreakdown: {
+        dutyPercentage: baselineDetailedCalc.dutyPercentage,
+        vatPercentage: baselineDetailedCalc.vatPercentage,
+        dutyAmount: baselineDetailedCalc.dutyAmount,
+        vatAmount: baselineDetailedCalc.vatAmount,
+        totalTaxes: baselineDetailedCalc.totalTaxes,
+      }
+    };
+    scenarios.push(baselineScenarioForReturn);
+
+    // Use properties from baselineDetailedCalc for variations
+    const actualBaselineDestCountry = baselineDetailedCalc.destinationCountry;
+    const actualBaselineOriginCountry = baselineDetailedCalc.originCountry; // This is the origin used for the baseline calc
+
     if (options.variations.shippingMethods) {
       for (const method of options.variations.shippingMethods) {
-        const scenario = await this.generateShippingMethodScenario(options.productIds[0], method)
-        scenarios.push(scenario)
-        savingsMatrix.byShippingMethod[method] = scenario.potentialSaving
+        const scenario = await this.generateShippingMethodScenario(primaryProductId, method, baselineDetailedCalc, actualBaselineDestCountry, yearlyUnits);
+        scenarios.push(scenario);
+        savingsMatrix.byShippingMethod[method] = scenario.potentialSaving;
       }
     }
 
     if (options.variations.originCountries) {
       for (const country of options.variations.originCountries) {
-        const scenario = await this.generateOriginCountryScenario(options.productIds[0], country)
-        scenarios.push(scenario)
-        savingsMatrix.byOriginCountry[country] = scenario.potentialSaving
+        const scenario = await this.generateOriginCountryScenario(primaryProductId, country, baselineDetailedCalc, actualBaselineDestCountry, yearlyUnits);
+        scenarios.push(scenario);
+        savingsMatrix.byOriginCountry[country] = scenario.potentialSaving;
       }
     }
 
     if (options.variations.destinationCountries) {
       for (const country of options.variations.destinationCountries) {
-        const scenario = await this.generateDestinationCountryScenario(options.productIds[0], country)
-        scenarios.push(scenario)
-        savingsMatrix.byDestinationCountry[country] = scenario.potentialSaving
+        // For destination country variations, the baselineProductOrigin is the product's inherent origin,
+        // not necessarily the one used in baselineDetailedCalc if that was varied.
+        const scenario = await this.generateDestinationCountryScenario(primaryProductId, country, productOriginCountry, yearlyUnits);
+        scenarios.push(scenario);
+        savingsMatrix.byDestinationCountry[country] = scenario.potentialSaving; 
       }
     }
+    
+    const sortedScenarios = scenarios.filter(s => typeof s.potentialSaving === 'number').sort((a, b) => b.potentialSaving - a.potentialSaving);
+    const bestScenario = sortedScenarios[0] || baselineScenarioForReturn;
+    const worstScenario = sortedScenarios[sortedScenarios.length - 1] || baselineScenarioForReturn;
 
-    // Find best and worst scenarios
-    const sortedScenarios = scenarios.sort((a, b) => b.potentialSaving - a.potentialSaving)
-    const bestScenario = sortedScenarios[0]
-    const worstScenario = sortedScenarios[sortedScenarios.length - 1]
-
-    // Generate recommendations and risk analysis
-    const recommendations = this.generateScenarioRecommendations(scenarios, savingsMatrix)
-    const riskAnalysis = this.generateRiskAnalysis(scenarios)
+    const recommendations = this.generateScenarioRecommendations(scenarios, savingsMatrix);
+    const riskAnalysis = this.generateRiskAnalysis(scenarios);
 
     return {
-      baselineScenario,
+      baselineScenario: baselineScenarioForReturn,
       alternativeScenarios: scenarios.slice(1),
       bestScenario,
       worstScenario,
       savingsMatrix,
       recommendations,
       riskAnalysis
-    }
+    };
   }
-
-  /**
-   * Calculate landed cost for a product with current classification
-   */
+  
   private async calculateLandedCost(product: any, classification: any): Promise<LandedCostBreakdown> {
     const dutyRequest: DutyCalculationRequest = {
       hsCode: classification.classification_code,
       productValue: product.cost || 0,
       quantity: 1,
       weight: product.weight || 1,
-      originCountry: 'CN',
-      destinationCountry: 'US',
+      originCountry: product.origin_country || 'CN', 
+      destinationCountry: 'US', 
       shippingMethod: 'standard',
       includeInsurance: true,
       isCommercialShipment: true
-    }
+    };
 
-    const calculation = await this.dutyEngine.calculateDuty(dutyRequest)
-    
+    const calculation = await this.dutyEngine.calculateDuty(dutyRequest);
     if (!calculation.success || !calculation.calculation) {
-      throw new Error('Failed to calculate duty')
+      throw new Error('Failed to calculate duty for baseline');
     }
-
-    const calc = calculation.calculation
+    const calc = calculation.calculation;
     
     return {
       productValue: product.cost || 0,
@@ -401,41 +434,54 @@ export class SavingsAnalysisEngine {
       vatAmount: calc.taxAmount,
       shippingCost: calc.shippingCost || 0,
       insuranceCost: calc.insuranceCost || 0,
-      fbaFees: product.fba_fee_estimate || 0,
+      fbaFees: product.fba_fee_estimate_usd || 0,
       brokerFees: calc.brokerFees || 0,
       totalLandedCost: calc.totalLandedCost,
-      profitMargin: product.profit_margin,
-      sellingPrice: product.selling_price
-    }
+      profitMargin: product.profit_margin, 
+      sellingPrice: product.selling_price,
+      destinationCountry: dutyRequest.destinationCountry, 
+      originCountry: dutyRequest.originCountry,       
+      shippingMethod: dutyRequest.shippingMethod,     
+      hsCode: dutyRequest.hsCode,                     
+    };
   }
 
-  /**
-   * Calculate optimized landed cost based on recommendation
-   */
   private async calculateOptimizedLandedCost(
     product: any, 
     currentClassification: any, 
     recommendation: OptimizationRecommendation
   ): Promise<LandedCostBreakdown> {
+    let originCountryRec = product.origin_country || 'CN';
+    if (recommendation.type === 'origin' && recommendation.alternativeOptions?.[0]?.description.includes("Source from")) {
+        const parts = recommendation.alternativeOptions[0].description.split(" ");
+        originCountryRec = parts[parts.length -1];
+    }
+
+    let shippingMethodRec = 'standard';
+    if (recommendation.type === 'shipping' && recommendation.description.includes(" to ")) {
+        const shippingParts = recommendation.description.split(" to ")[1]?.split(" ");
+        if (shippingParts && shippingParts.length > 0) {
+            shippingMethodRec = shippingParts[0].toLowerCase();
+        }
+    }
+
     const dutyRequest: DutyCalculationRequest = {
       hsCode: recommendation.recommendedHsCode || currentClassification.classification_code,
       productValue: product.cost || 0,
       quantity: 1,
       weight: product.weight || 1,
-      originCountry: 'CN',
-      destinationCountry: 'US',
-      shippingMethod: 'standard',
+      originCountry: originCountryRec,
+      destinationCountry: 'US', 
+      shippingMethod: shippingMethodRec as any,
       includeInsurance: true,
       isCommercialShipment: true
-    }
+    };
 
-    const calculation = await this.dutyEngine.calculateDuty(dutyRequest)
-    
+    const calculation = await this.dutyEngine.calculateDuty(dutyRequest);
     if (!calculation.success || !calculation.calculation) {
-      throw new Error('Failed to calculate optimized duty')
+      throw new Error('Failed to calculate optimized duty');
     }
-
-    const calc = calculation.calculation
+    const calc = calculation.calculation;
     
     return {
       productValue: product.cost || 0,
@@ -443,153 +489,141 @@ export class SavingsAnalysisEngine {
       vatAmount: calc.taxAmount,
       shippingCost: calc.shippingCost || 0,
       insuranceCost: calc.insuranceCost || 0,
-      fbaFees: product.fba_fee_estimate || 0,
+      fbaFees: product.fba_fee_estimate_usd || 0,
       brokerFees: calc.brokerFees || 0,
       totalLandedCost: calc.totalLandedCost,
       profitMargin: product.profit_margin,
-      sellingPrice: product.selling_price
-    }
+      sellingPrice: product.selling_price,
+      destinationCountry: dutyRequest.destinationCountry, 
+      originCountry: dutyRequest.originCountry,       
+      shippingMethod: dutyRequest.shippingMethod,     
+      hsCode: dutyRequest.hsCode,                     
+    };
   }
 
-  /**
-   * Calculate detailed savings breakdown
-   */
   private calculateSavingsBreakdown(
     baseline: LandedCostBreakdown,
     optimized: LandedCostBreakdown,
     yearlyUnits: number
   ): SavingsBreakdown {
-    const dutyReduction = baseline.dutyAmount - optimized.dutyAmount
-    const vatReduction = baseline.vatAmount - optimized.vatAmount
-    const shippingReduction = baseline.shippingCost - optimized.shippingCost
-    const fbaReduction = baseline.fbaFees - optimized.fbaFees
+    const dutyReduction = baseline.dutyAmount - optimized.dutyAmount;
+    const vatReduction = baseline.vatAmount - optimized.vatAmount;
+    const shippingReduction = baseline.shippingCost - optimized.shippingCost;
+    const fbaReduction = baseline.fbaFees - optimized.fbaFees;
     
-    const totalSavingsPerUnit = baseline.totalLandedCost - optimized.totalLandedCost
+    const totalSavingsPerUnit = baseline.totalLandedCost - optimized.totalLandedCost;
     const totalSavingsPercentage = baseline.totalLandedCost > 0 
       ? (totalSavingsPerUnit / baseline.totalLandedCost) * 100 
-      : 0
+      : 0;
     
-    const annualSavings = totalSavingsPerUnit * yearlyUnits
-    const roi = totalSavingsPerUnit > 0 ? (annualSavings / totalSavingsPerUnit) * 100 : 0
+    const annualSavings = totalSavingsPerUnit * yearlyUnits;
+    const estimatedImplementationCost = 1; 
+    const roi = estimatedImplementationCost > 0 ? (annualSavings / estimatedImplementationCost) * 100 : (annualSavings > 0 ? Infinity : 0);
     
     return {
-      dutyReduction,
-      vatReduction,
-      shippingReduction,
-      fbaReduction,
-      totalSavingsPerUnit,
-      totalSavingsPercentage,
-      annualSavings,
-      roi,
-      paybackPeriod: roi > 0 ? `${Math.ceil(12 / (roi / 100))} months` : 'N/A'
-    }
+      dutyReduction, vatReduction, shippingReduction, fbaReduction,
+      totalSavingsPerUnit, totalSavingsPercentage, annualSavings, roi,
+      paybackPeriod: roi > 0 && roi !== Infinity ? `${Math.ceil(12 / (roi / 100))} months` : 'N/A'
+    };
   }
 
-  /**
-   * Generate implementation requirements based on recommendation
-   */
   private generateImplementationRequirements(recommendation: OptimizationRecommendation): ImplementationRequirement[] {
-    const requirements: ImplementationRequirement[] = []
-
+    const requirements: ImplementationRequirement[] = [];
     if (recommendation.type === 'classification') {
       requirements.push({
         type: 'documentation',
-        description: 'Update product classification documentation',
-        estimatedCost: 500,
-        timeRequired: '1-2 weeks',
-        complexity: 'low'
-      })
-    }
-
-    if (recommendation.type === 'origin') {
+        description: 'Update product classification documentation and customs filings.',
+        estimatedCost: 500, timeRequired: '2-4 weeks', complexity: 'medium'
+      });
+      requirements.push({
+        type: 'legal_review',
+        description: 'Legal review of new HS code applicability and compliance.',
+        estimatedCost: 1000, timeRequired: '1-2 weeks', complexity: 'medium'
+      });
+    } else if (recommendation.type === 'origin') {
       requirements.push({
         type: 'supplier_change',
-        description: 'Evaluate and potentially change supplier/origin country',
-        estimatedCost: 2000,
-        timeRequired: '2-3 months',
-        complexity: 'high'
-      })
-    }
-
-    if (recommendation.type === 'trade_agreement') {
+        description: 'Identify, vet, and onboard new supplier in recommended origin country.',
+        estimatedCost: 5000, timeRequired: '3-6 months', complexity: 'high'
+      });
       requirements.push({
         type: 'certification',
-        description: 'Obtain trade agreement certification',
-        estimatedCost: 1000,
-        timeRequired: '3-4 weeks',
-        complexity: 'medium'
-      })
+        description: 'Obtain Certificate of Origin and other required trade documents.',
+        estimatedCost: 500, timeRequired: '2-4 weeks', complexity: 'medium'
+      });
+    } else if (recommendation.type === 'shipping') {
+       requirements.push({
+        type: 'process_change',
+        description: `Negotiate rates and update logistics for ${recommendation.description.split(" to ")[1]}.`,
+        estimatedCost: 200, timeRequired: '1-3 weeks', complexity: 'low'
+      });
+    } else if (recommendation.type === 'trade_agreement') {
+       requirements.push({
+        type: 'documentation',
+        description: `Compile documentation for ${recommendation.description.split(" ")[1]} compliance.`, 
+        estimatedCost: 700, timeRequired: '2-4 weeks', complexity: 'medium'
+      });
     }
-
-    return requirements
+    return requirements;
   }
 
-  /**
-   * Assess risks for a recommendation
-   */
   private assessRisks(recommendation: OptimizationRecommendation, product: any): RiskAssessment {
-    let complianceRisk: 'low' | 'medium' | 'high' = 'low'
-    let supplierRisk: 'low' | 'medium' | 'high' = 'low'
-    let marketRisk: 'low' | 'medium' | 'high' = 'low'
+    let complianceRisk: 'low' | 'medium' | 'high' = 'low';
+    let supplierRisk: 'low' | 'medium' | 'high' = 'low';
+    let marketRisk: 'low' | 'medium' | 'high' = 'low';
+    let operationalRiskLevel: 'low' | 'medium' | 'high' = 'low'; 
 
-    // Assess compliance risk
-    if (recommendation.type === 'classification' && recommendation.confidenceScore < 0.8) {
-      complianceRisk = 'medium'
+    if (recommendation.type === 'classification') {
+      complianceRisk = recommendation.confidenceScore < 0.7 ? 'high' : recommendation.confidenceScore < 0.9 ? 'medium' : 'low';
+      operationalRiskLevel = 'medium'; 
+    } else if (recommendation.type === 'origin') {
+      complianceRisk = 'high'; 
+      supplierRisk = 'high'; 
+      operationalRiskLevel = 'high'; 
+    } else if (recommendation.type === 'shipping') {
+      operationalRiskLevel = 'medium'; 
+    } else if (recommendation.type === 'trade_agreement') {
+      complianceRisk = 'medium'; 
     }
-    if (recommendation.type === 'origin') {
-      complianceRisk = 'high'
-      supplierRisk = 'high'
-    }
+    
+    const productValue = product?.cost || 0;
+    if (productValue > 5000) marketRisk = 'medium';
+    if (productValue > 20000) marketRisk = 'high';
 
-    // Assess market risk
-    if (product.value > 1000) {
-      marketRisk = 'medium'
-    }
-
-    const overallRisk = Math.max(
-      ['low', 'medium', 'high'].indexOf(complianceRisk),
-      ['low', 'medium', 'high'].indexOf(supplierRisk),
-      ['low', 'medium', 'high'].indexOf(marketRisk)
-    )
-
-    const mitigationStrategies = [
-      'Regular compliance audits',
-      'Diversified supplier base',
-      'Market monitoring and analysis'
-    ]
+    const riskLevels = { low: 1, medium: 2, high: 3 };
+    const tempOverallRiskScore = Math.max(riskLevels[complianceRisk], riskLevels[supplierRisk], riskLevels[marketRisk]);
+    const overallRisk: 'low' | 'medium' | 'high' = Object.keys(riskLevels).find(key => riskLevels[key as keyof typeof riskLevels] === tempOverallRiskScore) as 'low' | 'medium' | 'high' || 'medium';
 
     return {
-      complianceRisk,
-      supplierRisk,
-      marketRisk,
-      overallRisk: ['low', 'medium', 'high'][overallRisk] as 'low' | 'medium' | 'high',
-      mitigationStrategies
-    }
+      complianceRisk, supplierRisk, marketRisk, overallRisk, 
+      mitigationStrategies: ['Detailed due diligence', 'Phased rollout', 'Contingency planning'],
+      risk_factors: [ 
+        { factor: "Operational Change Complexity", severity: operationalRiskLevel, probability: 0.5, impact: "Process adjustment delays" }
+      ]
+    };
   }
-
-  /**
-   * Generate summary of savings analysis
-   */
+  
   private generateSummary(scenarios: ProductSavingsScenario[]): SavingsAnalysisSummary {
-    const highImpactScenarios = scenarios.filter(s => s.savingsBreakdown.totalSavingsPercentage > 10).length
+    const highImpactScenarios = scenarios.filter(s => s.savingsBreakdown.annualSavings > ((s.baselineCalculation.productValue * (s.productId.length || 1)) * 0.1)).length; 
     const quickWins = scenarios.filter(s => 
-      s.savingsBreakdown.totalSavingsPercentage > 5 && 
-      s.implementationRequirements.every(r => r.complexity === 'low')
-    ).length
+      s.savingsBreakdown.roi > 200 && 
+      s.implementationRequirements.every(r => r.complexity === 'low') &&
+      parseInt((s.timeToImplement.split('-')[1] || "3").replace (/\D/g, '')) <= 3 
+    ).length;
     const longTermOpportunities = scenarios.filter(s => 
-      s.savingsBreakdown.totalSavingsPercentage > 15
-    ).length
+      s.savingsBreakdown.annualSavings > ((s.baselineCalculation.productValue * (s.productId.length || 1)) * 0.05) && 
+      parseInt((s.timeToImplement.split('-')[0] || "6").replace (/\D/g, '')) >= 6 
+    ).length;
 
     const totalImplementationCost = scenarios.reduce((sum, s) => 
       sum + s.implementationRequirements.reduce((reqSum, req) => reqSum + req.estimatedCost, 0), 0
-    )
-
-    const totalSavings = scenarios.reduce((sum, s) => sum + s.savingsBreakdown.annualSavings, 0)
-    const netSavings = totalSavings - totalImplementationCost
+    );
+    const totalAnnualSavings = scenarios.reduce((sum, s) => sum + s.savingsBreakdown.annualSavings, 0);
+    const netSavings = totalAnnualSavings - totalImplementationCost;
 
     const priorityOrder = scenarios
-      .sort((a, b) => b.savingsBreakdown.roi - a.savingsBreakdown.roi)
-      .map(s => s.id)
+      .sort((a, b) => b.savingsBreakdown.roi - a.savingsBreakdown.roi) 
+      .map(s => s.id);
 
     return {
       highImpactScenarios,
@@ -598,113 +632,219 @@ export class SavingsAnalysisEngine {
       totalImplementationCost,
       netSavings,
       priorityOrder
-    }
+    };
   }
 
-  /**
-   * Generate portfolio-level recommendations
-   */
   private generatePortfolioRecommendations(scenarios: ProductSavingsScenario[]): PortfolioRecommendation[] {
-    const recommendations: PortfolioRecommendation[] = []
+    const recommendations: PortfolioRecommendation[] = [];
 
-    // Immediate opportunities
-    const immediateScenarios = scenarios.filter(s => 
-      s.savingsBreakdown.totalSavingsPercentage > 5 && 
-      s.implementationRequirements.every(r => r.complexity === 'low')
-    )
+    const quickWinScenarios = scenarios.filter(s => 
+      s.savingsBreakdown.roi > 200 &&
+      s.implementationRequirements.every(r => r.complexity === 'low') &&
+      parseInt((s.timeToImplement.split('-')[1] || "3").replace (/\D/g, '')) <= 3
+    );
 
-    if (immediateScenarios.length > 0) {
+    if (quickWinScenarios.length > 0) {
       recommendations.push({
-        id: 'immediate_wins',
+        id: 'portfolio_quick_wins',
         type: 'immediate',
-        title: 'Quick Win Optimizations',
-        description: `Implement ${immediateScenarios.length} low-complexity optimizations for immediate savings`,
-        affectedProducts: immediateScenarios.map(s => s.productId),
-        totalSavings: immediateScenarios.reduce((sum, s) => sum + s.savingsBreakdown.annualSavings, 0),
-        implementationCost: immediateScenarios.reduce((sum, s) => 
-          sum + s.implementationRequirements.reduce((reqSum, req) => reqSum + req.estimatedCost, 0), 0
-        ),
-        timeframe: '1-2 months',
+        title: 'Implement Quick Wins',
+        description: `Focus on ${quickWinScenarios.length} opportunities with high ROI and low complexity.`,
+        affectedProducts: quickWinScenarios.map(s => s.productId),
+        totalSavings: quickWinScenarios.reduce((sum, s) => sum + s.savingsBreakdown.annualSavings, 0),
+        implementationCost: quickWinScenarios.reduce((sum, s) => sum + s.implementationRequirements.reduce((reqSum, req) => reqSum + req.estimatedCost, 0),0),
+        timeframe: '1-3 months',
         priority: 'high'
-      })
+      });
     }
-
-    // Classification optimizations
-    const classificationScenarios = scenarios.filter(s => 
-      s.description.toLowerCase().includes('classification')
-    )
-
-    if (classificationScenarios.length > 0) {
-      recommendations.push({
-        id: 'classification_review',
-        type: 'short_term',
-        title: 'Product Classification Review',
-        description: `Review and optimize classifications for ${classificationScenarios.length} products`,
-        affectedProducts: classificationScenarios.map(s => s.productId),
-        totalSavings: classificationScenarios.reduce((sum, s) => sum + s.savingsBreakdown.annualSavings, 0),
-        implementationCost: classificationScenarios.length * 500,
-        timeframe: '2-3 months',
-        priority: 'medium'
-      })
-    }
-
-    return recommendations
+    return recommendations;
   }
 
-  // Helper methods for scenario generation
-  private async generateBaselineScenario(productId: string): Promise<ScenarioResult> {
-    // Implementation for baseline scenario
+  private async generateScenarioCalculation(
+    productId: string, 
+    variationOptions: Partial<DutyCalculationRequest> = {}
+  ): Promise<DetailedCalculationResult> {
+    const { data: productData } = await this.supabase
+      .from('products')
+      .select('cost, weight, active_classification_id, yearly_units, origin_country') 
+      .eq('id', productId)
+      .single();
+
+    if (!productData) throw new Error(`Product ${productId} not found for scenario generation.`);
+    const product = productData as any; 
+
+    if (!product.active_classification_id) {
+      throw new Error(`Product ${productId} does not have an active classification.`);
+    }
+
+    const { data: classificationData } = await this.supabase
+      .from('classifications')
+      .select('classification_code')
+      .eq('id', product.active_classification_id)
+      .single();
+    
+    const classification = classificationData as any;
+
+    if (!classification || !classification.classification_code) throw new Error(`Active classification not found for product ${productId}.`);
+
+    const baseRequest: DutyCalculationRequest = {
+      hsCode: classification.classification_code,
+      productValue: product.cost || 0,
+      quantity: 1, 
+      weight: product.weight || 1,
+      originCountry: variationOptions.originCountry || product.origin_country || 'CN', 
+      destinationCountry: variationOptions.destinationCountry || 'US', 
+      shippingMethod: variationOptions.shippingMethod || 'standard', 
+      includeInsurance: true,
+      isCommercialShipment: true,
+      ...variationOptions 
+    };
+
+    const calculationResult = await this.dutyEngine.calculateDuty(baseRequest);
+    if (!calculationResult.success || !calculationResult.calculation) {
+      throw new Error(`Duty calculation failed for product ${productId} with options ${JSON.stringify(variationOptions)}: ${calculationResult.error}`);
+    }
+    const calc = calculationResult.calculation; 
     return {
-      baseDutyAmount: 0,
-      alternativeDutyAmount: 0,
+      dutyPercentage: calc.dutyRate,
+      vatPercentage: calc.taxRate,
+      dutyAmount: calc.dutyAmount,
+      vatAmount: calc.taxAmount,
+      totalTaxes: calc.dutyAmount + calc.taxAmount,
+      totalLandedCost: calc.totalLandedCost,
+      hsCode: baseRequest.hsCode, 
+      originCountry: baseRequest.originCountry, 
+      destinationCountry: baseRequest.destinationCountry, 
+      shippingMethod: baseRequest.shippingMethod || 'standard', 
+      productValue: baseRequest.productValue, 
+    };
+  }
+  
+  private async generateBaselineScenario(productId: string, destinationCountry?: string, productOrigin?: string, yearlyUnitsParam?: number): Promise<ScenarioResult> {
+    const baselineCalc = await this.generateScenarioCalculation(productId, { 
+      destinationCountry: destinationCountry || 'US',
+      originCountry: productOrigin || 'CN' 
+    });
+    
+    const simpleBreakdown = { 
+      dutyPercentage: baselineCalc.dutyPercentage,
+      vatPercentage: baselineCalc.vatPercentage,
+      dutyAmount: baselineCalc.dutyAmount,
+      vatAmount: baselineCalc.vatAmount,
+      totalTaxes: baselineCalc.totalTaxes,
+    };
+
+    return {
+      baseDutyAmount: baselineCalc.dutyAmount,
+      alternativeDutyAmount: baselineCalc.dutyAmount,
       potentialSaving: 0,
       potentialYearlySaving: 0,
-      baseBreakdown: {
-        dutyPercentage: 0,
-        vatPercentage: 0,
-        dutyAmount: 0,
-        vatAmount: 0,
-        totalTaxes: 0
+      baseBreakdown: simpleBreakdown,
+      alternativeBreakdown: simpleBreakdown 
+    };
+  }
+
+  private async generateShippingMethodScenario(productId: string, method: string, baselineDetailedCalc: DetailedCalculationResult, destinationCountry: string, yearlyUnits: number): Promise<ScenarioResult> {
+    const altCalc = await this.generateScenarioCalculation(productId, { 
+      shippingMethod: method as 'air' | 'sea' | 'express' | 'standard', 
+      destinationCountry: destinationCountry, 
+      originCountry: baselineDetailedCalc.originCountry 
+    });
+    
+    const savingPerUnit = baselineDetailedCalc.totalLandedCost - altCalc.totalLandedCost;
+    const timeHorizon = this.options.timeHorizonMonths ?? 12; // Ensure defined
+    const units = yearlyUnits ?? 0; // Ensure defined
+    
+    return {
+      baseDutyAmount: baselineDetailedCalc.dutyAmount,
+      alternativeDutyAmount: altCalc.dutyAmount,
+      potentialSaving: savingPerUnit,
+      potentialYearlySaving: savingPerUnit * (timeHorizon / 12 * units),
+      baseBreakdown: { 
+        dutyPercentage: baselineDetailedCalc.dutyPercentage,
+        vatPercentage: baselineDetailedCalc.vatPercentage,
+        dutyAmount: baselineDetailedCalc.dutyAmount,
+        vatAmount: baselineDetailedCalc.vatAmount,
+        totalTaxes: baselineDetailedCalc.totalTaxes,
       },
       alternativeBreakdown: {
-        dutyPercentage: 0,
-        vatPercentage: 0,
-        dutyAmount: 0,
-        vatAmount: 0,
-        totalTaxes: 0
+        dutyPercentage: altCalc.dutyPercentage,
+        vatPercentage: altCalc.vatPercentage,
+        dutyAmount: altCalc.dutyAmount,
+        vatAmount: altCalc.vatAmount,
+        totalTaxes: altCalc.totalTaxes,
       }
-    }
+    };
   }
 
-  private async generateShippingMethodScenario(productId: string, method: string): Promise<ScenarioResult> {
-    // Implementation for shipping method scenario
-    return this.generateBaselineScenario(productId)
+  private async generateOriginCountryScenario(productId: string, country: string, baselineDetailedCalc: DetailedCalculationResult, destinationCountry: string, yearlyUnits: number): Promise<ScenarioResult> {
+    const altCalc = await this.generateScenarioCalculation(productId, { 
+      originCountry: country, 
+      destinationCountry: destinationCountry,
+      shippingMethod: baselineDetailedCalc.shippingMethod as any 
+    });
+    const savingPerUnit = baselineDetailedCalc.totalLandedCost - altCalc.totalLandedCost;
+    const timeHorizon = this.options.timeHorizonMonths ?? 12; // Ensure defined
+    const units = yearlyUnits ?? 0; // Ensure defined
+
+    return {
+      baseDutyAmount: baselineDetailedCalc.dutyAmount,
+      alternativeDutyAmount: altCalc.dutyAmount,
+      potentialSaving: savingPerUnit,
+      potentialYearlySaving: savingPerUnit * (timeHorizon / 12 * units),
+      baseBreakdown: {
+        dutyPercentage: baselineDetailedCalc.dutyPercentage,
+        vatPercentage: baselineDetailedCalc.vatPercentage,
+        dutyAmount: baselineDetailedCalc.dutyAmount,
+        vatAmount: baselineDetailedCalc.vatAmount,
+        totalTaxes: baselineDetailedCalc.totalTaxes,
+      },
+      alternativeBreakdown: {
+        dutyPercentage: altCalc.dutyPercentage,
+        vatPercentage: altCalc.vatPercentage,
+        dutyAmount: altCalc.dutyAmount,
+        vatAmount: altCalc.vatAmount,
+        totalTaxes: altCalc.totalTaxes,
+      }
+    };
   }
 
-  private async generateOriginCountryScenario(productId: string, country: string): Promise<ScenarioResult> {
-    // Implementation for origin country scenario
-    return this.generateBaselineScenario(productId)
-  }
-
-  private async generateDestinationCountryScenario(productId: string, country: string): Promise<ScenarioResult> {
-    // Implementation for destination country scenario
-    return this.generateBaselineScenario(productId)
+  private async generateDestinationCountryScenario(productId: string, country: string, baselineProductOrigin: string, yearlyUnits: number): Promise<ScenarioResult> {
+    const scenarioCalc = await this.generateScenarioCalculation(productId, { 
+      destinationCountry: country, 
+      originCountry: baselineProductOrigin 
+    });
+    const simpleBreakdown = {
+      dutyPercentage: scenarioCalc.dutyPercentage,
+      vatPercentage: scenarioCalc.vatPercentage,
+      dutyAmount: scenarioCalc.dutyAmount,
+      vatAmount: scenarioCalc.vatAmount,
+      totalTaxes: scenarioCalc.totalTaxes,
+    };
+    return {
+      baseDutyAmount: scenarioCalc.dutyAmount, 
+      alternativeDutyAmount: scenarioCalc.dutyAmount,
+      potentialSaving: 0, 
+      potentialYearlySaving: 0, 
+      baseBreakdown: simpleBreakdown,
+      alternativeBreakdown: simpleBreakdown
+    };
   }
 
   private generateScenarioRecommendations(scenarios: ScenarioResult[], matrix: SavingsMatrix): string[] {
     const recommendations: string[] = []
     
-    // Find best shipping method
     const bestShipping = Object.entries(matrix.byShippingMethod)
-      .sort(([,a], [,b]) => b - a)[0]
-    if (bestShipping && bestShipping[1] > 0) {
+      .filter(([, saving]) => typeof saving === 'number' && saving > 0)
+      .sort(([,a], [,b]) => (b as number) - (a as number))[0]
+    if (bestShipping) {
       recommendations.push(`Consider ${bestShipping[0]} shipping for ${bestShipping[1].toFixed(2)} savings`)
     }
 
-    // Find best origin country
     const bestOrigin = Object.entries(matrix.byOriginCountry)
-      .sort(([,a], [,b]) => b - a)[0]
-    if (bestOrigin && bestOrigin[1] > 0) {
+      .filter(([, saving]) => typeof saving === 'number' && saving > 0)
+      .sort(([,a], [,b]) => (b as number) - (a as number))[0]
+    if (bestOrigin) {
       recommendations.push(`Consider sourcing from ${bestOrigin[0]} for ${bestOrigin[1].toFixed(2)} savings`)
     }
 
@@ -718,7 +858,7 @@ export class SavingsAnalysisEngine {
       risks.push('High number of scenarios may indicate complex optimization requirements')
     }
     
-    const highSavingsScenarios = scenarios.filter(s => s.potentialSaving > 1000)
+    const highSavingsScenarios = scenarios.filter(s => typeof s.potentialSaving === 'number' && s.potentialSaving > 1000)
     if (highSavingsScenarios.length > 0) {
       risks.push('High-savings scenarios require careful compliance review')
     }
